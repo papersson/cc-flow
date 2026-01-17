@@ -37,6 +37,7 @@ class Turn(BaseModel):
     parent_turn_id: int | None = None
     children_turn_ids: list[int] = []
     is_branch: bool = False  # True if sibling turns exist
+    is_system: bool = False  # True if this is a system-injected message
 
 
 class CompactMetadata(BaseModel):

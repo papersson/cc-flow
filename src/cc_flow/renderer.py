@@ -47,6 +47,7 @@ def session_to_dict(session: Session) -> dict:
                     "parent_turn_id": turn.parent_turn_id,
                     "children_turn_ids": turn.children_turn_ids,
                     "is_branch": turn.is_branch,
+                    "is_system": turn.is_system,
                 }
             )
         segments.append(
@@ -92,6 +93,7 @@ def session_to_dict(session: Session) -> dict:
                     "parent_turn_id": turn.parent_turn_id,
                     "children_turn_ids": turn.children_turn_ids,
                     "is_branch": turn.is_branch,
+                    "is_system": turn.is_system,
                 }
             )
         subagents[agent_id] = agent_turns

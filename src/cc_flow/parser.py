@@ -92,6 +92,36 @@ def is_user_text(rec: dict) -> bool:
     return blocks[0].get("type") not in ["tool_result"]
 
 
+def is_system_message(text: str) -> bool:
+    """Check if a user message is actually a system-injected message by content."""
+    system_prefixes = [
+        "This session is being continued",
+        "<local-command",
+        "<command-name>",
+        "<command-message>",
+        "<system-reminder>",
+        "[Request interrupted",
+        "[Image: source:",
+    ]
+    for prefix in system_prefixes:
+        if text.startswith(prefix):
+            return True
+    return False
+
+
+def is_system_record(rec: dict) -> bool:
+    """Check if a record is a system message using JSONL fields or content."""
+    # Use JSONL fields if available
+    if rec.get("isCompactSummary") or rec.get("isVisibleInTranscriptOnly"):
+        return True
+    # Fall back to content-based detection
+    blocks = get_content_blocks(rec.get("message", {}))
+    if blocks and blocks[0].get("type") == "text":
+        text = blocks[0].get("text", "")
+        return is_system_message(text)
+    return False
+
+
 def collect_turns(
     start_uuid: str,
     by_uuid: dict[str, dict],
@@ -122,6 +152,7 @@ def collect_turns(
             user_message=user_message,
             user_timestamp=rec.get("timestamp", ""),
             parent_turn_id=parent_turn_id,
+            is_system=is_system_record(rec),
         )
 
         response_blocks: list[Block] = []
@@ -248,6 +279,33 @@ def collect_turns(
     return turns
 
 
+def find_first_user_text(
+    start_uuid: str,
+    by_uuid: dict[str, dict],
+    children_map: dict[str, list[str]],
+) -> str | None:
+    """BFS to find the first valid user_text message."""
+    visited = set()
+    queue = [start_uuid]
+
+    while queue:
+        uuid = queue.pop(0)
+        if uuid in visited:
+            continue
+        visited.add(uuid)
+
+        rec = by_uuid.get(uuid)
+        if rec and is_user_text(rec):
+            return uuid
+
+        # Add children to queue
+        for child_uuid in children_map.get(uuid, []):
+            if child_uuid not in visited:
+                queue.append(child_uuid)
+
+    return None
+
+
 def build_segments(records: list[dict]) -> list[Segment]:
     """Group turns into segments based on compact_boundary."""
     by_uuid, children_map = build_tree(records)
@@ -264,25 +322,15 @@ def build_segments(records: list[dict]) -> list[Segment]:
         compact_meta = root_rec.get("compactMetadata", {})
         timestamp = root_rec.get("timestamp", "")
 
-        # Find the starting user_text for this segment
+        # Find the starting user_text for this segment (BFS search)
         if is_user_text(root_rec):
             start_uuid = root_uuid
             segment_type = "original"
         elif root_subtype == "compact_boundary":
-            start_uuid = None
-            for child_uuid in children_map.get(root_uuid, []):
-                child_rec = by_uuid.get(child_uuid)
-                if child_rec and is_user_text(child_rec):
-                    start_uuid = child_uuid
-                    break
+            start_uuid = find_first_user_text(root_uuid, by_uuid, children_map)
             segment_type = "continuation"
         else:
-            start_uuid = None
-            for child_uuid in children_map.get(root_uuid, []):
-                child_rec = by_uuid.get(child_uuid)
-                if child_rec and is_user_text(child_rec):
-                    start_uuid = child_uuid
-                    break
+            start_uuid = find_first_user_text(root_uuid, by_uuid, children_map)
             segment_type = "original"
 
         if not start_uuid:
