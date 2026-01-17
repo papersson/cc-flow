@@ -1,0 +1,6 @@
+{"uuid": "msg-001", "type": "user", "timestamp": "2026-01-17T10:00:00Z", "message": {"content": [{"type": "text", "text": "What's 2+2?"}]}}
+{"uuid": "msg-002", "type": "assistant", "parentUuid": "msg-001", "timestamp": "2026-01-17T10:00:05Z", "message": {"content": [{"type": "text", "text": "2 + 2 = 4"}]}}
+{"uuid": "msg-003", "type": "user", "parentUuid": "msg-002", "timestamp": "2026-01-17T10:00:30Z", "message": {"content": [{"type": "text", "text": "What about 3+3?"}]}}
+{"uuid": "msg-004", "type": "assistant", "parentUuid": "msg-003", "timestamp": "2026-01-17T10:00:35Z", "message": {"content": [{"type": "text", "text": "3 + 3 = 6"}]}}
+{"uuid": "msg-005", "type": "user", "parentUuid": "msg-002", "timestamp": "2026-01-17T10:01:00Z", "message": {"content": [{"type": "text", "text": "What about 5+5?"}]}}
+{"uuid": "msg-006", "type": "assistant", "parentUuid": "msg-005", "timestamp": "2026-01-17T10:01:05Z", "message": {"content": [{"type": "text", "text": "5 + 5 = 10"}]}}

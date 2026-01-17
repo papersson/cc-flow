@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude Code - Session Flow</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;500;600&family=Source+Code+Pro:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        /* highlight.js github-dark theme (inlined) */
+        {{ hljs_github_dark_min_css | safe }}
+    </style>
+    <style>
+        :root {
+            /* Anthropic/Claude palette */
+            --bg: #1a1714;
+            --bg-subtle: #211e1a;
+            --surface: #292420;
+            --surface-raised: #332e28;
+            --border: #3d3630;
+            --border-focus: #5c4f42;
+
+            --text: #f5f0eb;
+            --text-secondary: #b8a99a;
+            --text-muted: #7a6b5c;
+
+            --coral: #d97757;
+            --coral-dim: #a85a42;
+            --coral-glow: rgba(217, 119, 87, 0.15);
+
+            --sand: #c9a87c;
+            --sand-dim: #8a7454;
+
+            --sage: #7ca87c;
+            --sage-glow: rgba(124, 168, 124, 0.12);
+
+            --sky: #7ca8c9;
+            --sky-glow: rgba(124, 168, 201, 0.12);
+
+            --lavender: #a87cc9;
+            --lavender-glow: rgba(168, 124, 201, 0.12);
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: 'Source Sans 3', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Subtle texture */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(217, 119, 87, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(124, 168, 124, 0.03) 0%, transparent 50%);
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        #nav-bar {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 52px;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            gap: 16px;
+            z-index: 100;
+        }
+
+        .nav-logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-logo svg {
+            width: 24px;
+            height: 24px;
+            fill: var(--coral);
+        }
+
+        .nav-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .nav-sep {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+
+        #breadcrumb {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.85rem;
+        }
+
+        .breadcrumb-item {
+            color: var(--text-secondary);
+            cursor: pointer;
+            padding: 6px 10px;
+            border-radius: 6px;
+            transition: all 0.15s;
+        }
+
+        .breadcrumb-item:hover {
+            background: var(--surface-raised);
+            color: var(--text);
+        }
+
+        .breadcrumb-item.current {
+            background: var(--coral-glow);
+            color: var(--coral);
+            cursor: default;
+        }
+
+        .breadcrumb-sep {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+        }
+
+        #controls {
+            margin-left: auto;
+            display: flex;
+            gap: 6px;
+        }
+
+        #controls button {
+            padding: 6px 14px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            background: var(--surface-raised);
+            color: var(--text-secondary);
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+        }
+
+        #controls button:hover {
+            border-color: var(--coral-dim);
+            color: var(--coral);
+            background: var(--coral-glow);
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 52px; left: 0; right: 0; bottom: 32px;
+            overflow: hidden;
+            cursor: grab;
+            z-index: 1;
+        }
+
+        #canvas-container:active { cursor: grabbing; }
+        #canvas { position: absolute; transform-origin: 0 0; }
+
+        /* Segment headers */
+        .segment-header {
+            position: absolute;
+            padding: 10px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .segment-header.original {
+            border-color: var(--sky);
+            background: var(--sky-glow);
+        }
+
+        .segment-header.continuation {
+            border-color: var(--lavender);
+            background: var(--lavender-glow);
+        }
+
+        .segment-label {
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .segment-header.original .segment-label { color: var(--sky); }
+        .segment-header.continuation .segment-label { color: var(--lavender); }
+
+        .segment-meta {
+            font-family: 'Source Code Pro', monospace;
+            color: var(--text-muted);
+            font-size: 0.7rem;
+        }
+
+        /* Turn cards */
+        .turn-card {
+            position: absolute;
+            width: 360px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transition: box-shadow 0.2s, border-color 0.2s;
+        }
+
+        .turn-card:hover {
+            border-color: var(--border-focus);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        .turn-header {
+            padding: 12px 16px;
+            background: var(--surface-raised);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .turn-index {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--coral);
+            background: var(--coral-glow);
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .turn-time {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-left: auto;
+        }
+
+        .copy-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px 8px;
+            font-size: 0.65rem;
+            transition: all 0.15s;
+        }
+
+        .copy-btn:hover {
+            border-color: var(--coral-dim);
+            color: var(--coral);
+        }
+
+        .copy-btn.copied {
+            border-color: var(--sage);
+            color: var(--sage);
+        }
+
+        .user-message {
+            padding: 14px 16px;
+            background: var(--bg-subtle);
+            border-bottom: 1px solid var(--border);
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+
+        .user-label {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.65rem;
+            font-weight: 500;
+            color: var(--sand);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 8px;
+        }
+
+        .response-items {
+            padding: 12px;
+            max-height: 350px;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-focus) transparent;
+        }
+
+        .response-items::-webkit-scrollbar { width: 6px; }
+        .response-items::-webkit-scrollbar-track { background: transparent; }
+        .response-items::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 3px; }
+
+        .response-item {
+            margin-bottom: 10px;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            border-left: 3px solid transparent;
+        }
+
+        .response-item:last-child { margin-bottom: 0; }
+
+        .item-thinking {
+            background: var(--bg);
+            border-left-color: var(--text-muted);
+            color: var(--text-secondary);
+        }
+
+        .item-text {
+            background: var(--bg-subtle);
+            border-left-color: var(--sand);
+        }
+
+        .item-tool_use {
+            background: var(--lavender-glow);
+            border-left-color: var(--lavender);
+        }
+
+        .item-tool_result {
+            background: var(--sage-glow);
+            border-left-color: var(--sage);
+        }
+
+        .item-header {
+            font-family: 'Source Code Pro', monospace;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 8px;
+            font-size: 0.7rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .item-thinking .item-header { color: var(--text-muted); }
+        .item-text .item-header { color: var(--sand); }
+        .item-tool_use .item-header { color: var(--lavender); }
+        .item-tool_result .item-header { color: var(--sage); }
+
+        .item-content {
+            white-space: pre-wrap;
+            word-break: break-word;
+            line-height: 1.55;
+        }
+
+        /* Markdown rendering */
+        .item-content.markdown h1,
+        .item-content.markdown h2,
+        .item-content.markdown h3 {
+            margin: 0.5em 0 0.3em;
+            font-weight: 600;
+        }
+        .item-content.markdown h1 { font-size: 1.3em; }
+        .item-content.markdown h2 { font-size: 1.15em; }
+        .item-content.markdown h3 { font-size: 1em; }
+        .item-content.markdown p { margin: 0.5em 0; }
+        .item-content.markdown ul, .item-content.markdown ol { margin: 0.5em 0; padding-left: 1.5em; }
+        .item-content.markdown li { margin: 0.2em 0; }
+        .item-content.markdown code {
+            background: var(--bg);
+            padding: 0.15em 0.4em;
+            border-radius: 3px;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.9em;
+        }
+        .item-content.markdown pre {
+            background: var(--bg);
+            padding: 0.8em;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        .item-content.markdown pre code {
+            background: none;
+            padding: 0;
+        }
+        .item-content.markdown blockquote {
+            border-left: 3px solid var(--border-focus);
+            padding-left: 1em;
+            margin: 0.5em 0;
+            color: var(--text-secondary);
+        }
+        .item-content.markdown a {
+            color: var(--coral);
+            text-decoration: none;
+        }
+        .item-content.markdown a:hover {
+            text-decoration: underline;
+        }
+
+        .tool-input {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 8px;
+            padding: 10px;
+            background: var(--bg);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+
+        .collapsible { cursor: pointer; }
+        .collapsible .item-content { display: none; }
+        .collapsible.expanded .item-content { display: block; }
+        .collapsible .item-header::before {
+            content: '>';
+            font-size: 0.8rem;
+            transition: transform 0.15s;
+            display: inline-block;
+            margin-right: 4px;
+        }
+        .collapsible.expanded .item-header::before { transform: rotate(90deg); }
+
+        .drill-btn {
+            margin-top: 10px;
+            padding: 8px 14px;
+            background: var(--coral-glow);
+            color: var(--coral);
+            border: 1px solid var(--coral-dim);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            transition: all 0.15s;
+        }
+
+        .drill-btn:hover {
+            background: var(--coral-dim);
+            color: var(--text);
+        }
+
+        svg.edges {
+            position: absolute;
+            top: 0; left: 0;
+            pointer-events: none;
+            overflow: visible;
+        }
+
+        .edge {
+            fill: none;
+            stroke: var(--border-focus);
+            stroke-width: 2;
+        }
+
+        #status-bar {
+            position: fixed;
+            bottom: 0; left: 0; right: 0;
+            height: 32px;
+            background: var(--surface);
+            border-top: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            z-index: 100;
+            gap: 24px;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--sage);
+        }
+
+        /* Empty state message */
+        .empty-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+        .empty-message h2 {
+            color: var(--text-secondary);
+            margin-bottom: 0.5em;
+            font-weight: 500;
+        }
+
+        /* Unavailable subagent indicator */
+        .subagent-unavailable {
+            color: var(--text-muted);
+            font-style: italic;
+            font-size: 0.8rem;
+            padding: 8px;
+            background: var(--bg);
+            border-radius: 4px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div id="nav-bar">
+        <div class="nav-logo">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span class="nav-title">cc-flow</span>
+        </div>
+        <span class="nav-sep">|</span>
+        <div id="breadcrumb">
+            <span class="breadcrumb-item current">Session</span>
+        </div>
+        <div id="controls">
+            <button onclick="resetView()">Reset</button>
+            <button onclick="zoomIn()">+</button>
+            <button onclick="zoomOut()">-</button>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <div id="canvas"><svg class="edges"></svg></div>
+    </div>
+
+    <div id="status-bar">
+        <div class="status-item">
+            <span class="status-dot"></span>
+            <span id="segment-count">0 segments</span>
+        </div>
+        <div class="status-item">
+            <span id="turn-count">0 turns</span>
+        </div>
+        <div class="status-item">
+            <span id="zoom-level">100%</span>
+        </div>
+        <div class="status-item" style="margin-left: auto;">
+            drag to pan | scroll to zoom | click to expand
+        </div>
+    </div>
+
+    <script>{{ marked_min_js | safe }}</script>
+    <script>{{ highlight_min_js | safe }}</script>
+    <script>
+        // Configure marked
+        marked.setOptions({
+            breaks: true,
+            gfm: true,
+            highlight: function(code, lang) {
+                if (lang && hljs.getLanguage(lang)) {
+                    return hljs.highlight(code, { language: lang }).value;
+                }
+                return hljs.highlightAuto(code).value;
+            }
+        });
+
+        const data = {{ session_json | safe }};
+        const segments = data.segments;
+        const subagents = data.subagents;
+
+        let currentView = 'root';
+        let navigationStack = ['root'];
+
+        const CARD_WIDTH = 360, CARD_GAP_Y = 45, BRANCH_GAP_X = 410;
+        const SEGMENT_GAP = 500;
+        const PADDING = 60, HEADER_HEIGHT = 50;
+
+        let scale = 1, translateX = PADDING, translateY = PADDING;
+        let isDragging = false, dragStartX, dragStartY;
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function formatTokens(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+            return n.toString();
+        }
+
+        function copyToClipboard(text, btn) {
+            navigator.clipboard.writeText(text).then(() => {
+                btn.classList.add('copied');
+                btn.textContent = 'Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.textContent = 'Copy';
+                }, 2000);
+            });
+        }
+
+        function navigateTo(viewId) {
+            if (viewId === 'root') {
+                currentView = 'root';
+                navigationStack = ['root'];
+            } else if (subagents[viewId]) {
+                const idx = navigationStack.indexOf(viewId);
+                if (idx >= 0) {
+                    navigationStack = navigationStack.slice(0, idx + 1);
+                } else {
+                    navigationStack.push(viewId);
+                }
+                currentView = viewId;
+            }
+            resetView();
+            render();
+            updateBreadcrumb();
+        }
+
+        function updateBreadcrumb() {
+            const bc = document.getElementById('breadcrumb');
+            bc.innerHTML = navigationStack.map((id, i) => {
+                const isLast = i === navigationStack.length - 1;
+                const label = id === 'root' ? 'Session' : `Agent ${id.substring(0,7)}`;
+                const sep = i < navigationStack.length - 1 ? '<span class="breadcrumb-sep">></span>' : '';
+                return `<span class="breadcrumb-item ${isLast ? 'current' : ''}" onclick="navigateTo('${id}')">${label}</span>${sep}`;
+            }).join('');
+        }
+
+        function renderMarkdown(text) {
+            try {
+                return marked.parse(text);
+            } catch (e) {
+                return escapeHtml(text);
+            }
+        }
+
+        function createTurnCard(turn, localIndex, segmentType) {
+            const card = document.createElement('div');
+            card.className = 'turn-card';
+            card.dataset.turnId = turn.id;
+            card.dataset.segmentType = segmentType;
+            const timestamp = turn.user_timestamp ? turn.user_timestamp.substring(11, 19) : '';
+
+            let itemsHtml = '';
+            turn.blocks.forEach(item => {
+                const isCollapsible = ['thinking', 'tool_use', 'tool_result'].includes(item.type);
+                let content = '', drillBtn = '';
+
+                if (item.type === 'thinking') {
+                    content = `<div class="item-content">${escapeHtml(item.content)}</div>`;
+                } else if (item.type === 'text') {
+                    content = `<div class="item-content markdown">${renderMarkdown(item.content)}</div>`;
+                } else if (item.type === 'tool_use') {
+                    if (item.child_agent_id) {
+                        if (subagents[item.child_agent_id]) {
+                            drillBtn = `<button class="drill-btn" onclick="event.stopPropagation();navigateTo('${item.child_agent_id}')">Enter subagent</button>`;
+                        } else {
+                            drillBtn = `<div class="subagent-unavailable">Subagent data unavailable</div>`;
+                        }
+                    }
+                    content = `<div class="item-content"><div class="tool-input">${escapeHtml(item.tool_input)}</div>${drillBtn}</div>`;
+                } else if (item.type === 'tool_result') {
+                    content = `<div class="item-content">${escapeHtml(item.content)}</div>`;
+                }
+
+                const header = item.type === 'tool_use'
+                    ? `${item.tool_name}${item.subagent_type ? ' (' + item.subagent_type + ')' : ''}`
+                    : item.type.replace('_', ' ');
+
+                itemsHtml += `
+                    <div class="response-item item-${item.type} ${isCollapsible ? 'collapsible' : ''}"
+                         onclick="event.stopPropagation();this.classList.toggle('expanded')">
+                        <div class="item-header">${header}</div>
+                        ${content}
+                    </div>`;
+            });
+
+            // Build full turn content for copy
+            let fullContent = `Human: ${turn.user_message}\n\n`;
+            turn.blocks.forEach(block => {
+                if (block.type === 'text') {
+                    fullContent += `${block.content}\n\n`;
+                } else if (block.type === 'tool_use') {
+                    fullContent += `[Tool: ${block.tool_name}] ${block.tool_input}\n\n`;
+                }
+            });
+
+            card.innerHTML = `
+                <div class="turn-header">
+                    <span class="turn-index">#${String(localIndex + 1).padStart(2, '0')}</span>
+                    <span class="turn-time">${timestamp}</span>
+                    <button class="copy-btn" onclick="event.stopPropagation();copyToClipboard(\`${fullContent.replace(/`/g, '\\`').replace(/\$/g, '\\$')}\`, this)">Copy</button>
+                </div>
+                <div class="user-message">
+                    <div class="user-label">Human</div>
+                    ${escapeHtml(turn.user_message)}
+                </div>
+                ${turn.blocks.length > 0 ? `<div class="response-items">${itemsHtml}</div>` : ''}
+            `;
+            return card;
+        }
+
+        function createSegmentHeader(segment) {
+            const header = document.createElement('div');
+            header.className = `segment-header ${segment.type}`;
+
+            let label, meta = '';
+            if (segment.type === 'continuation') {
+                label = 'Continued';
+                const tokens = segment.compact_metadata?.pre_tokens || 0;
+                if (tokens) meta = `${formatTokens(tokens)} tokens compacted`;
+            } else {
+                label = 'Original';
+                meta = `${segment.turns.length} turns`;
+            }
+
+            header.innerHTML = `
+                <span class="segment-label">${label}</span>
+                <span class="segment-meta">${meta}</span>
+            `;
+            return header;
+        }
+
+        function render() {
+            const canvas = document.getElementById('canvas');
+            canvas.querySelectorAll('.turn-card, .segment-header, .empty-message').forEach(el => el.remove());
+
+            let allPositions = {};
+            let allHeights = {};
+            let totalTurns = 0;
+
+            // Handle empty state
+            if (currentView === 'root' && segments.length === 0) {
+                const emptyMsg = document.createElement('div');
+                emptyMsg.className = 'empty-message';
+                emptyMsg.innerHTML = '<h2>No conversation found</h2><p>The session file contains no user messages.</p>';
+                canvas.appendChild(emptyMsg);
+                document.getElementById('segment-count').textContent = '0 segments';
+                document.getElementById('turn-count').textContent = '0 turns';
+                return;
+            }
+
+            if (currentView === 'root') {
+                // Render segments side by side
+                let segmentX = 0;
+
+                segments.forEach((segment, segIdx) => {
+                    const turns = segment.turns;
+                    totalTurns += turns.length;
+
+                    // Create segment header
+                    const headerEl = createSegmentHeader(segment);
+                    headerEl.style.position = 'absolute';
+                    headerEl.style.left = segmentX + 'px';
+                    headerEl.style.top = '0px';
+                    canvas.appendChild(headerEl);
+
+                    // Measure card heights
+                    const heights = {};
+                    turns.forEach((turn, i) => {
+                        const card = createTurnCard(turn, i, segment.type);
+                        canvas.appendChild(card);
+                        heights[turn.id] = card.offsetHeight;
+                        card.remove();
+                    });
+
+                    // Layout this segment
+                    const positions = {};
+                    const turnById = {};
+                    turns.forEach(t => turnById[t.id] = t);
+
+                    const roots = turns.filter(t => t.parent_turn_id === null);
+                    let localX = segmentX;
+
+                    function layoutSubtree(turnId, x, y) {
+                        const turn = turnById[turnId];
+                        if (!turn) return { width: 0, height: 0 };
+                        positions[turnId] = { x, y, segmentId: segment.id };
+                        const children = turns.filter(t => t.parent_turn_id === turnId);
+                        if (children.length === 0) return { width: CARD_WIDTH, height: heights[turnId] };
+                        let childY = y + heights[turnId] + CARD_GAP_Y;
+                        let totalWidth = 0;
+                        children.forEach((child, i) => {
+                            const childX = x + totalWidth;
+                            const subtree = layoutSubtree(child.id, childX, childY);
+                            totalWidth += subtree.width + (i < children.length - 1 ? BRANCH_GAP_X - CARD_WIDTH : 0);
+                        });
+                        return { width: Math.max(CARD_WIDTH, totalWidth), height: heights[turnId] };
+                    }
+
+                    let maxWidth = 0;
+                    roots.forEach(root => {
+                        layoutSubtree(root.id, localX, HEADER_HEIGHT);
+                        const maxX = Math.max(...Object.values(positions).filter(p => p.segmentId === segment.id).map(p => p.x));
+                        localX = maxX + CARD_WIDTH + BRANCH_GAP_X;
+                        maxWidth = Math.max(maxWidth, maxX + CARD_WIDTH - segmentX);
+                    });
+
+                    // Render cards for this segment
+                    turns.forEach((turn, i) => {
+                        const card = createTurnCard(turn, i, segment.type);
+                        const pos = positions[turn.id];
+                        if (pos) {
+                            card.style.left = pos.x + 'px';
+                            card.style.top = pos.y + 'px';
+                        }
+                        canvas.appendChild(card);
+                    });
+
+                    Object.assign(allPositions, positions);
+                    Object.assign(allHeights, heights);
+
+                    segmentX += maxWidth + SEGMENT_GAP;
+                });
+
+                document.getElementById('segment-count').textContent = `${segments.length} segments`;
+                document.getElementById('turn-count').textContent = `${totalTurns} turns`;
+
+            } else {
+                // Render subagent
+                const turns = subagents[currentView] || [];
+                totalTurns = turns.length;
+
+                const heights = {};
+                turns.forEach((turn, i) => {
+                    const card = createTurnCard(turn, i, 'subagent');
+                    canvas.appendChild(card);
+                    heights[turn.id] = card.offsetHeight;
+                    card.remove();
+                });
+
+                const positions = {};
+                const turnById = {};
+                turns.forEach(t => turnById[t.id] = t);
+                const roots = turns.filter(t => t.parent_turn_id === null);
+
+                let globalX = 0;
+                function layoutSubtree(turnId, x, y) {
+                    const turn = turnById[turnId];
+                    if (!turn) return { width: 0, height: 0 };
+                    positions[turnId] = { x, y };
+                    const children = turns.filter(t => t.parent_turn_id === turnId);
+                    if (children.length === 0) return { width: CARD_WIDTH, height: heights[turnId] };
+                    let childY = y + heights[turnId] + CARD_GAP_Y;
+                    let totalWidth = 0;
+                    children.forEach((child, i) => {
+                        const childX = x + totalWidth;
+                        const subtree = layoutSubtree(child.id, childX, childY);
+                        totalWidth += subtree.width + (i < children.length - 1 ? BRANCH_GAP_X - CARD_WIDTH : 0);
+                    });
+                    return { width: Math.max(CARD_WIDTH, totalWidth), height: heights[turnId] };
+                }
+
+                roots.forEach(root => {
+                    layoutSubtree(root.id, globalX, 0);
+                    const maxX = Math.max(...Object.values(positions).map(p => p.x), 0);
+                    globalX = maxX + CARD_WIDTH + BRANCH_GAP_X;
+                });
+
+                turns.forEach((turn, i) => {
+                    const card = createTurnCard(turn, i, 'subagent');
+                    const pos = positions[turn.id];
+                    if (pos) { card.style.left = pos.x + 'px'; card.style.top = pos.y + 'px'; }
+                    canvas.appendChild(card);
+                });
+
+                Object.assign(allPositions, positions);
+                Object.assign(allHeights, heights);
+
+                document.getElementById('segment-count').textContent = `subagent`;
+                document.getElementById('turn-count').textContent = `${totalTurns} turns`;
+            }
+
+            // Draw edges
+            const svg = document.querySelector('svg.edges');
+            svg.innerHTML = '';
+            let maxX = 0, maxY = 0;
+            Object.values(allPositions).forEach(p => {
+                maxX = Math.max(maxX, p.x + CARD_WIDTH);
+                maxY = Math.max(maxY, p.y + 500);
+            });
+            svg.setAttribute('width', Math.max(maxX + PADDING, 100));
+            svg.setAttribute('height', Math.max(maxY + PADDING, 100));
+
+            const allTurns = currentView === 'root'
+                ? segments.flatMap(s => s.turns)
+                : (subagents[currentView] || []);
+
+            allTurns.forEach(turn => {
+                if (turn.parent_turn_id === null) return;
+                const parentPos = allPositions[turn.parent_turn_id], childPos = allPositions[turn.id];
+                if (!parentPos || !childPos) return;
+                const parentCard = document.querySelector(`[data-turn-id="${turn.parent_turn_id}"]`);
+                const parentHeight = parentCard ? parentCard.offsetHeight : 200;
+                const x1 = parentPos.x + CARD_WIDTH / 2, y1 = parentPos.y + parentHeight;
+                const x2 = childPos.x + CARD_WIDTH / 2, y2 = childPos.y;
+                const midY = (y1 + y2) / 2;
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('class', 'edge');
+                path.setAttribute('d', `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`);
+                svg.appendChild(path);
+            });
+
+            updateTransform();
+        }
+
+        function updateTransform() {
+            document.getElementById('canvas').style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
+            document.getElementById('zoom-level').textContent = `${Math.round(scale * 100)}%`;
+        }
+
+        function resetView() { scale = 1; translateX = PADDING; translateY = PADDING; updateTransform(); }
+        function zoomIn() { scale = Math.min(scale * 1.2, 3); updateTransform(); }
+        function zoomOut() { scale = Math.max(scale / 1.2, 0.2); updateTransform(); }
+
+        const container = document.getElementById('canvas-container');
+
+        container.addEventListener('mousedown', (e) => {
+            if (e.target.closest('.turn-card, .segment-header')) return;
+            isDragging = true;
+            dragStartX = e.clientX - translateX;
+            dragStartY = e.clientY - translateY;
+        });
+
+        container.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            translateX = e.clientX - dragStartX;
+            translateY = e.clientY - dragStartY;
+            updateTransform();
+        });
+
+        container.addEventListener('mouseup', () => isDragging = false);
+        container.addEventListener('mouseleave', () => isDragging = false);
+
+        container.addEventListener('wheel', (e) => {
+            if (e.target.closest('.response-items')) return;
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            const newScale = Math.max(0.2, Math.min(3, scale * delta));
+            const rect = container.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left, mouseY = e.clientY - rect.top;
+            translateX = mouseX - (mouseX - translateX) * (newScale / scale);
+            translateY = mouseY - (mouseY - translateY) * (newScale / scale);
+            scale = newScale;
+            updateTransform();
+        });
+
+        render();
+    </script>
+</body>
+</html>

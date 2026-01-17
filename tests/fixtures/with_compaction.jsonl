@@ -1,0 +1,5 @@
+{"uuid": "msg-001", "type": "user", "timestamp": "2026-01-17T10:00:00Z", "message": {"content": [{"type": "text", "text": "Hello!"}]}}
+{"uuid": "msg-002", "type": "assistant", "parentUuid": "msg-001", "timestamp": "2026-01-17T10:00:05Z", "message": {"content": [{"type": "text", "text": "Hello! How can I help you today?"}]}}
+{"uuid": "msg-003", "type": "system", "subtype": "compact_boundary", "timestamp": "2026-01-17T11:00:00Z", "compactMetadata": {"trigger": "auto", "preTokens": 162000}}
+{"uuid": "msg-004", "type": "user", "parentUuid": "msg-003", "timestamp": "2026-01-17T11:00:01Z", "message": {"content": [{"type": "text", "text": "Continue our conversation."}]}}
+{"uuid": "msg-005", "type": "assistant", "parentUuid": "msg-004", "timestamp": "2026-01-17T11:00:10Z", "message": {"content": [{"type": "text", "text": "Of course! Based on our previous conversation, we were discussing your project. What would you like to continue with?"}]}}
