@@ -56,6 +56,8 @@ Every record shares common fields:
 | `type` | string | Record type (see below) |
 | `subtype` | string? | Optional subtype for system records |
 | `message` | object/string | Content varies by type |
+| `isCompactSummary` | bool? | True if this is a compaction summary (user records only) |
+| `isVisibleInTranscriptOnly` | bool? | True if shown in transcript but not sent to model |
 
 ### Record Types
 
@@ -94,6 +96,8 @@ User content blocks:
 
 **Distinguishing user text from tool results:**
 A user record is a "user text" (start of a turn) if the first content block is NOT `tool_result`.
+
+**Note:** Not all `user` records represent actual human input. Some are system-injected messages (see Section 5: System-Injected Messages).
 
 ### Assistant Messages
 
@@ -187,7 +191,80 @@ Multiple roots occur when:
 
 ---
 
-## 5. Branches
+## 5. System-Injected Messages
+
+Not all `user` records represent actual human input. Claude Code injects system messages that appear as user records but contain automated content. Identifying these is important for accurate visualization and analysis.
+
+### Detection Methods
+
+#### 1. JSONL Metadata Fields (Preferred)
+
+Some system messages include explicit flags:
+
+```json
+{
+  "type": "user",
+  "isCompactSummary": true,
+  "message": { ... }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `isCompactSummary` | True for the summary message after compaction |
+| `isVisibleInTranscriptOnly` | True for messages shown in transcript but not sent to model |
+
+#### 2. Content Pattern Detection (Fallback)
+
+When metadata fields aren't present, detect by content prefixes:
+
+| Pattern | Description |
+|---------|-------------|
+| `This session is being continued` | Compaction summary message |
+| `<local-command` | Local CLI command execution |
+| `<command-name>` | Skill/command invocation |
+| `<command-message>` | Command output |
+| `<system-reminder>` | System reminder injection |
+| `[Request interrupted` | User interrupted the request |
+| `[Image: source:` | Image attachment (screenshot, etc.) |
+
+### Detection Algorithm
+
+```python
+def is_system_record(rec: dict) -> bool:
+    """Check if a user record is actually system-injected."""
+    # Method 1: Check JSONL metadata fields
+    if rec.get("isCompactSummary") or rec.get("isVisibleInTranscriptOnly"):
+        return True
+
+    # Method 2: Check content patterns
+    content = rec.get("message", {}).get("content", [])
+    if content and content[0].get("type") == "text":
+        text = content[0].get("text", "")
+        system_prefixes = [
+            "This session is being continued",
+            "<local-command",
+            "<command-name>",
+            "<command-message>",
+            "<system-reminder>",
+            "[Request interrupted",
+            "[Image: source:",
+        ]
+        return any(text.startswith(prefix) for prefix in system_prefixes)
+
+    return False
+```
+
+### Visual Treatment
+
+When visualizing transcripts, system messages are typically styled differently:
+- Muted colors (gray/lavender) instead of user colors
+- "System" label instead of "Human"
+- Helps users distinguish actual input from automated messages
+
+---
+
+## 6. Branches
 
 The tree structure enables **branches** — forks in the conversation.
 
@@ -233,7 +310,7 @@ def find_branches(records):
 
 ---
 
-## 6. Segments & Compaction
+## 7. Segments & Compaction
 
 ### What is Compaction?
 
@@ -320,7 +397,7 @@ def build_segments(records):
 
 ---
 
-## 7. Session Lifecycle
+## 8. Session Lifecycle
 
 ### Starting a Session
 
@@ -352,7 +429,7 @@ The conversation can be resumed by Claude Code reading the JSONL and reconstruct
 
 ---
 
-## 8. Subagents
+## 9. Subagents
 
 ### What are Subagents?
 
@@ -409,7 +486,7 @@ def link_subagents(turns, subagents):
 
 ---
 
-## 9. Special Record Types
+## 10. Special Record Types
 
 ### file-history-snapshot
 
@@ -457,7 +534,7 @@ Timing metadata after each turn completes.
 
 ---
 
-## 10. Parsing Patterns
+## 11. Parsing Patterns
 
 ### Loading Records
 
@@ -621,5 +698,6 @@ useful_records = [r for r in records if r['type'] not in SKIP_TYPES]
 | Turn start | `is_user_text(record)` returns True |
 | Branch point | Parent has multiple user_text children |
 | Compaction | `type='system'`, `subtype='compact_boundary'` |
+| System message | `isCompactSummary` or `isVisibleInTranscriptOnly` field, or content prefix match |
 | Subagent spawn | `tool_use` with `name='Task'` |
 | Subagent link | `tool_result` content contains `agentId:` |
