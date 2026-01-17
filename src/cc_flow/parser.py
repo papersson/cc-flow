@@ -184,11 +184,16 @@ def collect_turns(
                 timestamp = kid_rec.get("timestamp", "")[11:19] if kid_rec.get("timestamp") else ""
 
                 if block_type == "thinking":
+                    full_thinking = block.get("thinking", "")
+                    truncated_thinking = truncate(full_thinking, 500)
+                    is_truncated = len(full_thinking) > 500
                     response_blocks.append(
                         Block(
                             type=BlockType.THINKING,
-                            content=truncate(block.get("thinking", ""), 500),
+                            content=truncated_thinking,
                             timestamp=timestamp,
+                            full_content=full_thinking if is_truncated else None,
+                            is_truncated=is_truncated,
                         )
                     )
                 elif block_type == "text":
@@ -201,13 +206,16 @@ def collect_turns(
                     )
                 elif block_type == "tool_use":
                     inputs = block.get("input", {})
-                    tool_input = ""
+                    full_tool_input = ""
                     for key in ["command", "prompt", "pattern", "file_path", "query"]:
                         if key in inputs:
-                            tool_input = truncate(str(inputs[key]), 200)
+                            full_tool_input = str(inputs[key])
                             break
                     else:
-                        tool_input = truncate(str(inputs), 100)
+                        full_tool_input = str(inputs)
+
+                    truncated_tool_input = truncate(full_tool_input, 200)
+                    is_truncated = len(full_tool_input) > 200
 
                     response_blocks.append(
                         Block(
@@ -215,9 +223,11 @@ def collect_turns(
                             content="",
                             timestamp=timestamp,
                             tool_name=block.get("name", "?"),
-                            tool_input=tool_input,
+                            tool_input=truncated_tool_input,
                             tool_use_id=block.get("id", ""),
                             subagent_type=inputs.get("subagent_type"),
+                            full_content=full_tool_input if is_truncated else None,
+                            is_truncated=is_truncated,
                         )
                     )
                 elif block_type == "tool_result":
@@ -226,13 +236,18 @@ def collect_turns(
                     if isinstance(content, list):
                         texts = [c.get("text", "") for c in content if isinstance(c, dict)]
                         content = "\n".join(texts)
+                    full_result = str(content)
+                    truncated_result = truncate(full_result, 300)
+                    is_truncated = len(full_result) > 300
                     response_blocks.append(
                         Block(
                             type=BlockType.TOOL_RESULT,
-                            content=truncate(str(content), 300),
+                            content=truncated_result,
                             timestamp=timestamp,
                             tool_use_id=block.get("tool_use_id", ""),
                             child_agent_id=agent_id,
+                            full_content=full_result if is_truncated else None,
+                            is_truncated=is_truncated,
                         )
                     )
 

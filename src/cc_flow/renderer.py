@@ -36,6 +36,8 @@ def session_to_dict(session: Session) -> dict:
                         "tool_use_id": block.tool_use_id,
                         "child_agent_id": block.child_agent_id,
                         "subagent_type": block.subagent_type,
+                        "full_content": block.full_content,
+                        "is_truncated": block.is_truncated,
                     }
                 )
             turns.append(
@@ -82,6 +84,8 @@ def session_to_dict(session: Session) -> dict:
                         "tool_use_id": block.tool_use_id,
                         "child_agent_id": block.child_agent_id,
                         "subagent_type": block.subagent_type,
+                        "full_content": block.full_content,
+                        "is_truncated": block.is_truncated,
                     }
                 )
             agent_turns.append(

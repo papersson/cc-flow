@@ -398,35 +398,143 @@
         .modal-response::-webkit-scrollbar-track { background: transparent; }
         .modal-response::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 4px; }
 
+        /* Modal blocks - cleaner typography hierarchy */
         .modal-block {
             margin-bottom: 16px;
-            padding: 16px;
-            border-radius: 8px;
-            border-left: 3px solid transparent;
         }
 
         .modal-block:last-child { margin-bottom: 0; }
 
-        .modal-block.thinking {
-            background: var(--bg);
-            border-left-color: var(--text-muted);
-        }
-
+        /* Text blocks - most prominent, minimal decoration */
         .modal-block.text {
-            background: var(--bg-subtle);
-            border-left-color: var(--sand);
+            background: transparent;
+            padding: 0 0 16px 0;
         }
 
-        .modal-block.tool_use {
-            background: var(--lavender-glow);
-            border-left-color: var(--lavender);
+        .modal-block.text .modal-block-header {
+            display: none;
         }
 
-        .modal-block.tool_result {
-            background: var(--sage-glow);
-            border-left-color: var(--sage);
+        /* Thinking blocks - de-emphasized, collapsed by default */
+        .modal-block.thinking {
+            opacity: 0.85;
+            padding: 12px 16px;
+            background: var(--bg);
+            border-radius: 6px;
+            cursor: pointer;
         }
 
+        .modal-block.thinking .modal-block-header {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .modal-block.thinking .modal-block-header::before {
+            content: '▶';
+            font-size: 0.6rem;
+            transition: transform 0.15s;
+        }
+
+        .modal-block.thinking.expanded .modal-block-header::before {
+            transform: rotate(90deg);
+        }
+
+        .modal-block.thinking .modal-block-content {
+            max-height: 0;
+            overflow: hidden;
+            font-style: italic;
+            color: var(--text-secondary);
+            margin-top: 0;
+            opacity: 0;
+            transition: max-height 0.2s ease-out, margin-top 0.2s ease-out, opacity 0.2s ease-out;
+        }
+
+        .modal-block.thinking.expanded .modal-block-content {
+            max-height: 500px;
+            margin-top: 8px;
+            opacity: 1;
+        }
+
+        .modal-block.thinking .expand-link {
+            display: none;
+        }
+
+        .modal-block.thinking.expanded .expand-link {
+            display: inline-block;
+            margin-top: 8px;
+        }
+
+        /* Tool groups - terminal-style with left accent */
+        .modal-tool-group {
+            margin-bottom: 20px;
+            background: var(--bg);
+            border-radius: 6px;
+            padding: 12px 14px;
+            border-left: 3px solid var(--border-focus);
+        }
+
+        .modal-tool-group:last-child { margin-bottom: 0; }
+
+        .modal-tool-header {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+
+        .modal-tool-group .modal-tool-input {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text);
+        }
+
+        .modal-tool-group .modal-tool-result {
+            padding-top: 10px;
+            margin-top: 10px;
+            border-top: 1px solid var(--border);
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.85rem;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            word-break: break-word;
+            color: var(--text-secondary);
+        }
+
+        .modal-tool-group .expand-container {
+            padding-top: 8px;
+        }
+
+        /* Expand link for truncated content */
+        .expand-link {
+            color: var(--coral);
+            font-size: 0.8rem;
+            cursor: pointer;
+            margin-top: 8px;
+            display: inline-block;
+            font-family: 'Source Code Pro', monospace;
+        }
+
+        .expand-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Subagent drill button in tool group */
+        .modal-tool-group .drill-btn {
+            margin: 12px 14px;
+        }
+
+        /* Legacy modal-block styles for standalone blocks */
         .modal-block-header {
             font-family: 'Source Code Pro', monospace;
             font-size: 0.75rem;
@@ -435,11 +543,6 @@
             letter-spacing: 0.08em;
             margin-bottom: 10px;
         }
-
-        .modal-block.thinking .modal-block-header { color: var(--text-muted); }
-        .modal-block.text .modal-block-header { color: var(--sand); }
-        .modal-block.tool_use .modal-block-header { color: var(--lavender); }
-        .modal-block.tool_result .modal-block-header { color: var(--sage); }
 
         .modal-block-content {
             font-size: 0.9rem;
@@ -1280,6 +1383,39 @@
         // Modal functions
         let currentModalTurn = null;
 
+        // Group tool_use blocks with their corresponding tool_result
+        function groupBlocks(blocks) {
+            const groups = [];
+            const resultMap = new Map();
+
+            // Index tool_results by tool_use_id
+            blocks.filter(b => b.type === 'tool_result' && b.tool_use_id)
+                  .forEach(b => resultMap.set(b.tool_use_id, b));
+
+            const usedResults = new Set();
+
+            blocks.forEach(block => {
+                if (block.type === 'tool_use') {
+                    const result = resultMap.get(block.tool_use_id);
+                    groups.push({
+                        groupType: 'tool',
+                        toolUse: block,
+                        toolResult: result || null
+                    });
+                    if (result) usedResults.add(block.tool_use_id);
+                } else if (block.type === 'tool_result') {
+                    // Skip if already paired
+                    if (!usedResults.has(block.tool_use_id)) {
+                        groups.push({ groupType: 'standalone', block });
+                    }
+                } else {
+                    groups.push({ groupType: 'standalone', block });
+                }
+            });
+
+            return groups;
+        }
+
         function openModal(turn) {
             currentModalTurn = turn;
 
@@ -1300,39 +1436,158 @@
                 userSection.classList.remove('system-msg');
             }
 
-            // Build response blocks
+            // Build response blocks using grouping
             const responseEl = document.getElementById('modal-response');
             let blocksHtml = '';
 
             if (turn.blocks && turn.blocks.length > 0) {
-                turn.blocks.forEach(block => {
-                    let content = '';
-                    let header = block.type.replace('_', ' ');
+                const groups = groupBlocks(turn.blocks);
+                let thinkingCounter = 0;
 
-                    if (block.type === 'thinking') {
-                        content = `<div class="modal-block-content">${escapeHtml(block.content)}</div>`;
-                    } else if (block.type === 'text') {
-                        content = `<div class="modal-block-content markdown">${renderMarkdown(block.content)}</div>`;
-                    } else if (block.type === 'tool_use') {
-                        header = block.tool_name + (block.subagent_type ? ` (${block.subagent_type})` : '');
-                        content = `<div class="modal-tool-input">${escapeHtml(block.tool_input)}</div>`;
-                        if (block.child_agent_id && subagents[block.child_agent_id]) {
-                            content += `<button class="drill-btn" onclick="closeModal();navigateTo('${block.child_agent_id}')">Enter subagent</button>`;
+                groups.forEach((group) => {
+                    if (group.groupType === 'tool') {
+                        // Render unified tool group
+                        const toolUse = group.toolUse;
+                        const toolResult = group.toolResult;
+                        const toolName = toolUse.tool_name + (toolUse.subagent_type ? ` (${toolUse.subagent_type})` : '');
+
+                        let inputContent = escapeHtml(toolUse.tool_input);
+                        let expandInputLink = '';
+                        if (toolUse.is_truncated && toolUse.full_content) {
+                            expandInputLink = `<span class="expand-link" data-block-id="${toolUse.tool_use_id}" data-content-type="input">[Show all]</span>`;
                         }
-                    } else if (block.type === 'tool_result') {
-                        content = `<div class="modal-block-content">${escapeHtml(block.content)}</div>`;
-                    }
 
-                    blocksHtml += `
-                        <div class="modal-block ${block.type}">
-                            <div class="modal-block-header">${header}</div>
-                            ${content}
-                        </div>
-                    `;
+                        let resultContent = '';
+                        let expandResultLink = '';
+                        if (toolResult) {
+                            resultContent = escapeHtml(toolResult.content);
+                            if (toolResult.is_truncated && toolResult.full_content) {
+                                expandResultLink = `<span class="expand-link" data-block-id="${toolResult.tool_use_id}" data-content-type="result">[Show all]</span>`;
+                            }
+                        }
+
+                        let drillBtn = '';
+                        if (toolUse.child_agent_id) {
+                            if (subagents[toolUse.child_agent_id]) {
+                                drillBtn = `<button class="drill-btn" onclick="closeModal();navigateTo('${toolUse.child_agent_id}')">Enter subagent</button>`;
+                            } else {
+                                drillBtn = `<div class="subagent-unavailable" style="margin: 12px 14px;">Subagent data unavailable</div>`;
+                            }
+                        }
+
+                        blocksHtml += `
+                            <div class="modal-tool-group">
+                                <div class="modal-tool-header">${toolName}</div>
+                                <div class="modal-tool-input" data-block-id="${toolUse.tool_use_id}" data-content-type="input">${inputContent}</div>
+                                ${expandInputLink ? `<div class="expand-container">${expandInputLink}</div>` : ''}
+                                ${toolResult ? `
+                                    <div class="modal-tool-result" data-block-id="${toolResult.tool_use_id}" data-content-type="result">${resultContent}</div>
+                                    ${expandResultLink ? `<div class="expand-container">${expandResultLink}</div>` : ''}
+                                ` : ''}
+                                ${drillBtn}
+                            </div>
+                        `;
+                    } else {
+                        // Render standalone block
+                        const block = group.block;
+
+                        if (block.type === 'thinking') {
+                            let content = escapeHtml(block.content);
+                            let expandLink = '';
+                            const thinkingId = `thinking-${thinkingCounter++}`;
+                            if (block.is_truncated && block.full_content) {
+                                expandLink = `<span class="expand-link" data-thinking-id="${thinkingId}">[Show all]</span>`;
+                            }
+                            blocksHtml += `
+                                <div class="modal-block thinking" data-thinking-id="${thinkingId}" onclick="this.classList.toggle('expanded')">
+                                    <div class="modal-block-header">Thinking</div>
+                                    <div class="modal-block-content">${content}</div>
+                                    ${expandLink}
+                                </div>
+                            `;
+                        } else if (block.type === 'text') {
+                            blocksHtml += `
+                                <div class="modal-block text">
+                                    <div class="modal-block-header">Text</div>
+                                    <div class="modal-block-content markdown">${renderMarkdown(block.content)}</div>
+                                </div>
+                            `;
+                        } else if (block.type === 'tool_result') {
+                            // Standalone tool_result (orphaned)
+                            let content = escapeHtml(block.content);
+                            let expandLink = '';
+                            if (block.is_truncated && block.full_content) {
+                                expandLink = `<span class="expand-link" data-block-id="${block.tool_use_id}" data-content-type="orphan-result">[Show all]</span>`;
+                            }
+                            blocksHtml += `
+                                <div class="modal-tool-group">
+                                    <div class="modal-tool-header">Result</div>
+                                    <div class="modal-tool-result" data-block-id="${block.tool_use_id}" data-content-type="orphan-result">${content}</div>
+                                    ${expandLink ? `<div class="expand-container">${expandLink}</div>` : ''}
+                                </div>
+                            `;
+                        }
+                    }
                 });
             }
 
             responseEl.innerHTML = blocksHtml;
+
+            // Add expand link handlers (toggle between truncated and full)
+            responseEl.querySelectorAll('.expand-link').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const blockId = link.dataset.blockId;
+                    const contentType = link.dataset.contentType;
+                    const thinkingId = link.dataset.thinkingId;
+                    const isExpanded = link.dataset.expanded === 'true';
+
+                    if (thinkingId) {
+                        // Handle thinking block content toggle
+                        const thinkingBlock = turn.blocks.find(b => b.type === 'thinking' && b.is_truncated);
+                        if (thinkingBlock) {
+                            const thinkingEl = responseEl.querySelector(`[data-thinking-id="${thinkingId}"]`);
+                            if (thinkingEl) {
+                                const contentEl = thinkingEl.querySelector('.modal-block-content');
+                                if (contentEl) {
+                                    if (isExpanded) {
+                                        contentEl.textContent = thinkingBlock.content;
+                                        link.textContent = '[Show all]';
+                                        link.dataset.expanded = 'false';
+                                    } else {
+                                        contentEl.textContent = thinkingBlock.full_content;
+                                        link.textContent = '[Show less]';
+                                        link.dataset.expanded = 'true';
+                                    }
+                                }
+                            }
+                        }
+                    } else if (blockId && contentType) {
+                        // Handle tool input/result toggle
+                        let block;
+                        if (contentType === 'input') {
+                            block = turn.blocks.find(b => b.type === 'tool_use' && b.tool_use_id === blockId);
+                        } else {
+                            block = turn.blocks.find(b => b.type === 'tool_result' && b.tool_use_id === blockId);
+                        }
+
+                        if (block) {
+                            const contentEl = responseEl.querySelector(`[data-block-id="${blockId}"][data-content-type="${contentType}"]`);
+                            if (contentEl) {
+                                if (isExpanded) {
+                                    contentEl.textContent = contentType === 'input' ? block.tool_input : block.content;
+                                    link.textContent = '[Show all]';
+                                    link.dataset.expanded = 'false';
+                                } else if (block.full_content) {
+                                    contentEl.textContent = block.full_content;
+                                    link.textContent = '[Show less]';
+                                    link.dataset.expanded = 'true';
+                                }
+                            }
+                        }
+                    }
+                });
+            });
 
             // Show modal
             document.getElementById('modal-backdrop').classList.add('visible');

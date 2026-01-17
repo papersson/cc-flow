@@ -25,6 +25,8 @@ class Block(BaseModel):
     tool_use_id: str | None = None  # for tool_result
     child_agent_id: str | None = None  # for tool_use spawning Task
     subagent_type: str | None = None  # for Task tool_use
+    full_content: str | None = None  # Full content when truncated
+    is_truncated: bool = False
 
 
 class Turn(BaseModel):
