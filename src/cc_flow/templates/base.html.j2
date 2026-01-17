@@ -215,7 +215,12 @@
             border-radius: 10px;
             overflow: hidden;
             box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            transition: box-shadow 0.2s, border-color 0.2s;
+            transition:
+                width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                box-shadow 0.3s ease-out,
+                border-color 0.2s,
+                transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             flex-direction: column;
             cursor: pointer;
@@ -224,6 +229,265 @@
         .turn-card:hover {
             border-color: var(--border-focus);
             box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }
+
+        /* Modal overlay */
+        .modal-backdrop {
+            position: fixed;
+            top: 52px;
+            left: 0;
+            right: 0;
+            bottom: 32px;
+            background: rgba(26, 23, 20, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 400;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s ease-out;
+        }
+
+        .modal-backdrop.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Expanded card modal */
+        .card-modal {
+            position: fixed;
+            top: 52px;
+            left: 0;
+            right: 0;
+            bottom: 32px;
+            z-index: 500;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 24px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.25s ease-out;
+        }
+
+        .card-modal.visible {
+            pointer-events: auto;
+            opacity: 1;
+        }
+
+        .card-modal-content {
+            width: 100%;
+            max-width: 900px;
+            height: 100%;
+            max-height: calc(100vh - 140px);
+            background: var(--surface);
+            border: 1px solid var(--border-focus);
+            border-radius: 12px;
+            box-shadow: 0 24px 80px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            transform: scale(0.95);
+            transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .card-modal.visible .card-modal-content {
+            transform: scale(1);
+        }
+
+        .modal-header {
+            padding: 14px 18px;
+            background: var(--surface-raised);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-shrink: 0;
+        }
+
+        .modal-time {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .modal-btn {
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            transition: all 0.15s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .modal-btn:hover {
+            border-color: var(--coral-dim);
+            color: var(--coral);
+        }
+
+        .modal-btn.copied {
+            border-color: var(--sage);
+            color: var(--sage);
+        }
+
+        .modal-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+
+        .modal-close {
+            font-size: 1.4rem;
+            line-height: 1;
+            padding: 4px 10px;
+        }
+
+        .modal-user-section {
+            padding: 18px 24px;
+            background: var(--bg-subtle);
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            max-height: 30vh;
+            overflow-y: auto;
+        }
+
+        .modal-user-label {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.7rem;
+            font-weight: 500;
+            color: var(--sand);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 10px;
+        }
+
+        .modal-user-section.system-msg {
+            background: var(--bg);
+            border-left: 3px solid var(--text-muted);
+        }
+
+        .modal-user-section.system-msg .modal-user-label {
+            color: var(--text-muted);
+        }
+
+        .modal-user-message {
+            font-size: 0.95rem;
+            line-height: 1.65;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .modal-response {
+            flex: 1;
+            overflow-y: auto;
+            padding: 18px 24px;
+            scrollbar-width: thin;
+            scrollbar-color: var(--border-focus) transparent;
+        }
+
+        .modal-response::-webkit-scrollbar { width: 8px; }
+        .modal-response::-webkit-scrollbar-track { background: transparent; }
+        .modal-response::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 4px; }
+
+        .modal-block {
+            margin-bottom: 16px;
+            padding: 16px;
+            border-radius: 8px;
+            border-left: 3px solid transparent;
+        }
+
+        .modal-block:last-child { margin-bottom: 0; }
+
+        .modal-block.thinking {
+            background: var(--bg);
+            border-left-color: var(--text-muted);
+        }
+
+        .modal-block.text {
+            background: var(--bg-subtle);
+            border-left-color: var(--sand);
+        }
+
+        .modal-block.tool_use {
+            background: var(--lavender-glow);
+            border-left-color: var(--lavender);
+        }
+
+        .modal-block.tool_result {
+            background: var(--sage-glow);
+            border-left-color: var(--sage);
+        }
+
+        .modal-block-header {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.75rem;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 10px;
+        }
+
+        .modal-block.thinking .modal-block-header { color: var(--text-muted); }
+        .modal-block.text .modal-block-header { color: var(--sand); }
+        .modal-block.tool_use .modal-block-header { color: var(--lavender); }
+        .modal-block.tool_result .modal-block-header { color: var(--sage); }
+
+        .modal-block-content {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .modal-block-content.markdown h1,
+        .modal-block-content.markdown h2,
+        .modal-block-content.markdown h3 {
+            margin: 0.5em 0 0.3em;
+            font-weight: 600;
+        }
+        .modal-block-content.markdown h1 { font-size: 1.3em; }
+        .modal-block-content.markdown h2 { font-size: 1.15em; }
+        .modal-block-content.markdown h3 { font-size: 1em; }
+        .modal-block-content.markdown p { margin: 0.5em 0; }
+        .modal-block-content.markdown ul, .modal-block-content.markdown ol { margin: 0.5em 0; padding-left: 1.5em; }
+        .modal-block-content.markdown li { margin: 0.2em 0; }
+        .modal-block-content.markdown code {
+            background: var(--bg);
+            padding: 0.15em 0.4em;
+            border-radius: 3px;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.9em;
+        }
+        .modal-block-content.markdown pre {
+            background: var(--bg);
+            padding: 0.8em;
+            border-radius: 6px;
+            overflow-x: auto;
+            margin: 0.5em 0;
+        }
+        .modal-block-content.markdown pre code {
+            background: none;
+            padding: 0;
+        }
+
+        .modal-tool-input {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            padding: 12px;
+            background: var(--bg);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            margin-top: 10px;
         }
 
         .turn-header {
@@ -544,146 +808,6 @@
             margin-top: 8px;
         }
 
-        /* Detail panel */
-        .detail-panel {
-            position: fixed;
-            top: 52px;
-            right: 0;
-            bottom: 32px;
-            width: 400px;
-            background: var(--surface);
-            border-left: 1px solid var(--border);
-            z-index: 200;
-            display: flex;
-            flex-direction: column;
-            transform: translateX(0);
-            transition: transform 0.2s ease-out;
-        }
-
-        .detail-panel.hidden {
-            transform: translateX(100%);
-        }
-
-        .detail-header {
-            padding: 16px;
-            background: var(--surface-raised);
-            border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
-        }
-
-        .detail-title {
-            font-weight: 600;
-            color: var(--text);
-        }
-
-        .detail-close {
-            background: none;
-            border: 1px solid var(--border);
-            border-radius: 4px;
-            color: var(--text-muted);
-            cursor: pointer;
-            width: 28px;
-            height: 28px;
-            font-size: 1.2rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.15s;
-        }
-
-        .detail-close:hover {
-            border-color: var(--coral-dim);
-            color: var(--coral);
-        }
-
-        .detail-content {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px;
-            scrollbar-width: thin;
-            scrollbar-color: var(--border-focus) transparent;
-        }
-
-        .detail-content::-webkit-scrollbar { width: 6px; }
-        .detail-content::-webkit-scrollbar-track { background: transparent; }
-        .detail-content::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 3px; }
-
-        .detail-section {
-            margin-bottom: 20px;
-        }
-
-        .detail-section-title {
-            font-family: 'Source Code Pro', monospace;
-            font-size: 0.7rem;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            color: var(--sand);
-            margin-bottom: 10px;
-        }
-
-        .detail-user-message {
-            background: var(--bg-subtle);
-            border-radius: 8px;
-            padding: 14px;
-            font-size: 0.9rem;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        .detail-block {
-            background: var(--bg-subtle);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 10px;
-            border-left: 3px solid var(--border);
-        }
-
-        .detail-block.thinking { border-left-color: var(--text-muted); }
-        .detail-block.text { border-left-color: var(--sand); }
-        .detail-block.tool_use { border-left-color: var(--lavender); }
-        .detail-block.tool_result { border-left-color: var(--sage); }
-
-        .detail-block-header {
-            font-family: 'Source Code Pro', monospace;
-            font-size: 0.7rem;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            margin-bottom: 8px;
-        }
-
-        .detail-block.thinking .detail-block-header { color: var(--text-muted); }
-        .detail-block.text .detail-block-header { color: var(--sand); }
-        .detail-block.tool_use .detail-block-header { color: var(--lavender); }
-        .detail-block.tool_result .detail-block-header { color: var(--sage); }
-
-        .detail-block-content {
-            font-size: 0.85rem;
-            line-height: 1.55;
-            white-space: pre-wrap;
-            word-break: break-word;
-        }
-
-        .detail-overlay {
-            position: fixed;
-            top: 52px;
-            left: 0;
-            right: 400px;
-            bottom: 32px;
-            background: rgba(0,0,0,0.3);
-            z-index: 199;
-            transition: opacity 0.2s ease-out;
-        }
-
-        .detail-overlay.hidden {
-            opacity: 0;
-            pointer-events: none;
-        }
     </style>
 </head>
 <body>
@@ -719,18 +843,30 @@
             <span id="zoom-level">100%</span>
         </div>
         <div class="status-item" style="margin-left: auto;">
-            drag to pan | scroll to zoom | click card for details
+            drag to pan | scroll to zoom | click card to expand
         </div>
     </div>
 
-    <div id="detail-panel" class="detail-panel hidden">
-        <div class="detail-header">
-            <span class="detail-title">Turn Details</span>
-            <button class="detail-close" onclick="closeDetailPanel()">&times;</button>
+    <div id="modal-backdrop" class="modal-backdrop"></div>
+    <div id="card-modal" class="card-modal">
+        <div class="card-modal-content">
+            <div class="modal-header">
+                <span class="modal-time" id="modal-time"></span>
+                <div class="modal-actions">
+                    <button class="modal-btn" id="modal-copy-btn">
+                        <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+                        Copy
+                    </button>
+                    <button class="modal-btn modal-close" id="modal-close-btn">&times;</button>
+                </div>
+            </div>
+            <div class="modal-user-section" id="modal-user-section">
+                <div class="modal-user-label" id="modal-user-label">Human</div>
+                <div class="modal-user-message" id="modal-user-message"></div>
+            </div>
+            <div class="modal-response" id="modal-response"></div>
         </div>
-        <div class="detail-content"></div>
     </div>
-    <div id="detail-overlay" class="detail-overlay hidden" onclick="closeDetailPanel()"></div>
 
     <script>{{ marked_min_js | safe }}</script>
     <script>{{ highlight_min_js | safe }}</script>
@@ -1141,61 +1277,110 @@
         function zoomIn() { scale = Math.min(scale * 1.2, 3); updateTransform(); }
         function zoomOut() { scale = Math.max(scale / 1.2, 0.2); updateTransform(); }
 
-        // Detail panel functions
-        function openDetailPanel(turn) {
-            const panel = document.getElementById('detail-panel');
-            const overlay = document.getElementById('detail-overlay');
-            const content = document.querySelector('.detail-content');
+        // Modal functions
+        let currentModalTurn = null;
 
-            // Build detail content
-            let html = `
-                <div class="detail-section">
-                    <div class="detail-section-title">Human Message</div>
-                    <div class="detail-user-message">${escapeHtml(turn.user_message)}</div>
-                </div>
-            `;
+        function openModal(turn) {
+            currentModalTurn = turn;
+
+            // Populate modal content
+            const timestamp = turn.user_timestamp ? turn.user_timestamp.substring(11, 19) : '';
+            document.getElementById('modal-time').textContent = timestamp;
+
+            const userSection = document.getElementById('modal-user-section');
+            const userLabel = document.getElementById('modal-user-label');
+            const userMessage = document.getElementById('modal-user-message');
+
+            userLabel.textContent = turn.is_system ? 'System' : 'Human';
+            userMessage.textContent = turn.user_message;
+
+            if (turn.is_system) {
+                userSection.classList.add('system-msg');
+            } else {
+                userSection.classList.remove('system-msg');
+            }
+
+            // Build response blocks
+            const responseEl = document.getElementById('modal-response');
+            let blocksHtml = '';
 
             if (turn.blocks && turn.blocks.length > 0) {
-                html += '<div class="detail-section"><div class="detail-section-title">Response</div>';
                 turn.blocks.forEach(block => {
-                    let blockContent = '';
+                    let content = '';
                     let header = block.type.replace('_', ' ');
 
                     if (block.type === 'thinking') {
-                        blockContent = escapeHtml(block.content);
+                        content = `<div class="modal-block-content">${escapeHtml(block.content)}</div>`;
                     } else if (block.type === 'text') {
-                        blockContent = `<div class="item-content markdown">${renderMarkdown(block.content)}</div>`;
+                        content = `<div class="modal-block-content markdown">${renderMarkdown(block.content)}</div>`;
                     } else if (block.type === 'tool_use') {
                         header = block.tool_name + (block.subagent_type ? ` (${block.subagent_type})` : '');
-                        blockContent = `<div class="tool-input">${escapeHtml(block.tool_input)}</div>`;
+                        content = `<div class="modal-tool-input">${escapeHtml(block.tool_input)}</div>`;
                         if (block.child_agent_id && subagents[block.child_agent_id]) {
-                            blockContent += `<button class="drill-btn" onclick="closeDetailPanel();navigateTo('${block.child_agent_id}')">Enter subagent</button>`;
+                            content += `<button class="drill-btn" onclick="closeModal();navigateTo('${block.child_agent_id}')">Enter subagent</button>`;
                         }
                     } else if (block.type === 'tool_result') {
-                        blockContent = escapeHtml(block.content);
+                        content = `<div class="modal-block-content">${escapeHtml(block.content)}</div>`;
                     }
 
-                    html += `
-                        <div class="detail-block ${block.type}">
-                            <div class="detail-block-header">${header}</div>
-                            <div class="detail-block-content">${blockContent}</div>
+                    blocksHtml += `
+                        <div class="modal-block ${block.type}">
+                            <div class="modal-block-header">${header}</div>
+                            ${content}
                         </div>
                     `;
                 });
-                html += '</div>';
             }
 
-            content.innerHTML = html;
-            panel.classList.remove('hidden');
-            overlay.classList.remove('hidden');
+            responseEl.innerHTML = blocksHtml;
+
+            // Show modal
+            document.getElementById('modal-backdrop').classList.add('visible');
+            document.getElementById('card-modal').classList.add('visible');
         }
 
-        function closeDetailPanel() {
-            document.getElementById('detail-panel').classList.add('hidden');
-            document.getElementById('detail-overlay').classList.add('hidden');
+        function closeModal() {
+            document.getElementById('modal-backdrop').classList.remove('visible');
+            document.getElementById('card-modal').classList.remove('visible');
+            currentModalTurn = null;
         }
 
-        // Store turn data for detail panel lookup
+        function copyModalContent() {
+            if (!currentModalTurn) return;
+
+            let text = `Human: ${currentModalTurn.user_message}\n\n`;
+            currentModalTurn.blocks.forEach(block => {
+                if (block.type === 'text') {
+                    text += `${block.content}\n\n`;
+                } else if (block.type === 'tool_use') {
+                    text += `[Tool: ${block.tool_name}] ${block.tool_input}\n\n`;
+                }
+            });
+
+            const btn = document.getElementById('modal-copy-btn');
+            navigator.clipboard.writeText(text).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+                }, 2000);
+            });
+        }
+
+        // Modal event listeners
+        document.getElementById('modal-backdrop').addEventListener('click', closeModal);
+        document.getElementById('card-modal').addEventListener('click', (e) => {
+            // Close if clicking the modal container (outside the content)
+            if (e.target === e.currentTarget) closeModal();
+        });
+        document.getElementById('modal-close-btn').addEventListener('click', closeModal);
+        document.getElementById('modal-copy-btn').addEventListener('click', copyModalContent);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Store turn data for copy/lookup
         let turnDataMap = {};
 
         function storeTurnData(segmentId, turn) {
@@ -1222,17 +1407,17 @@
         container.addEventListener('mouseup', () => isDragging = false);
         container.addEventListener('mouseleave', () => isDragging = false);
 
-        // Card click handler for detail panel
+        // Card click handler - open modal
         container.addEventListener('click', (e) => {
             const card = e.target.closest('.turn-card');
             if (!card) return;
             // Skip if clicking interactive elements
-            if (e.target.closest('button, .collapsible, .drill-btn')) return;
+            if (e.target.closest('button, .drill-btn, .collapsible')) return;
 
             const turnKey = card.dataset.turnId;
             const turn = turnDataMap[turnKey];
             if (turn) {
-                openDetailPanel(turn);
+                openModal(turn);
             }
         });
 
