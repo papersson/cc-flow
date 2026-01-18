@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from cc_flow.parser import parse_session
-from cc_flow.renderer import json_for_html, render, session_to_dict
+from cc_flow.renderer import image_to_data_url, json_for_html, process_images, render, session_to_dict
 
 
 class TestJsonForHtml:
@@ -92,3 +92,107 @@ class TestRender:
         session = Session(segments=[], subagents={})
         html = render(session)
         assert "<!DOCTYPE html>" in html
+
+
+class TestImageToDataUrl:
+    """Tests for image_to_data_url function."""
+
+    def test_valid_png(self, tmp_path: Path) -> None:
+        """Valid PNG file returns data URL with correct MIME type."""
+        # Minimal valid PNG (1x1 transparent pixel)
+        png_data = bytes([
+            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk
+            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+            0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
+            0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+            0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+            0x42, 0x60, 0x82,
+        ])
+        img = tmp_path / "test.png"
+        img.write_bytes(png_data)
+
+        result = image_to_data_url(str(img))
+        assert result is not None
+        assert result.startswith("data:image/png;base64,")
+
+    def test_valid_jpeg(self, tmp_path: Path) -> None:
+        """Valid JPEG file returns data URL with correct MIME type."""
+        # Minimal JPEG header
+        jpeg_data = bytes([0xFF, 0xD8, 0xFF, 0xE0]) + b"JFIF" + b"\x00" * 100
+        img = tmp_path / "test.jpg"
+        img.write_bytes(jpeg_data)
+
+        result = image_to_data_url(str(img))
+        assert result is not None
+        assert result.startswith("data:image/jpeg;base64,")
+
+    def test_missing_file_returns_none(self) -> None:
+        """Non-existent file returns None."""
+        result = image_to_data_url("/nonexistent/path/to/image.png")
+        assert result is None
+
+    def test_unknown_extension_defaults_to_png(self, tmp_path: Path) -> None:
+        """Unknown extension defaults to image/png MIME type."""
+        img = tmp_path / "test.unknownext12345"
+        img.write_bytes(b"some data")
+
+        result = image_to_data_url(str(img))
+        assert result is not None
+        assert result.startswith("data:image/png;base64,")
+
+    def test_base64_encoding(self, tmp_path: Path) -> None:
+        """Content is correctly base64 encoded."""
+        import base64
+
+        content = b"test image data"
+        img = tmp_path / "test.png"
+        img.write_bytes(content)
+
+        result = image_to_data_url(str(img))
+        assert result is not None
+
+        # Extract and decode base64 part
+        b64_part = result.split(",")[1]
+        decoded = base64.b64decode(b64_part)
+        assert decoded == content
+
+
+class TestProcessImages:
+    """Tests for process_images function."""
+
+    def test_without_embedding(self) -> None:
+        """Without embedding, returns paths only."""
+        paths = ["/path/to/img1.png", "/path/to/img2.jpg"]
+        result = process_images(paths, embed=False)
+
+        assert len(result) == 2
+        assert result[0] == {"path": "/path/to/img1.png"}
+        assert result[1] == {"path": "/path/to/img2.jpg"}
+
+    def test_with_embedding_valid_file(self, tmp_path: Path) -> None:
+        """With embedding, includes data_url for valid files."""
+        img = tmp_path / "test.png"
+        img.write_bytes(b"fake png data")
+
+        result = process_images([str(img)], embed=True)
+
+        assert len(result) == 1
+        assert result[0]["path"] == str(img)
+        assert "data_url" in result[0]
+        assert result[0]["data_url"].startswith("data:")
+
+    def test_with_embedding_missing_file(self) -> None:
+        """With embedding, missing files have no data_url."""
+        result = process_images(["/nonexistent/image.png"], embed=True)
+
+        assert len(result) == 1
+        assert result[0]["path"] == "/nonexistent/image.png"
+        assert "data_url" not in result[0]
+
+    def test_empty_paths(self) -> None:
+        """Empty paths list returns empty result."""
+        result = process_images([], embed=True)
+        assert result == []
