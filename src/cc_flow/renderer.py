@@ -1,12 +1,34 @@
 """HTML renderer for session visualization."""
 
+import base64
 import json
+import mimetypes
 from pathlib import Path
 from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
 from .models import Session
+
+
+def image_to_data_url(path: str) -> str | None:
+    """Read an image file and convert to base64 data URL."""
+    try:
+        file_path = Path(path)
+        if not file_path.exists():
+            return None
+
+        # Guess MIME type
+        mime_type, _ = mimetypes.guess_type(path)
+        if mime_type is None:
+            mime_type = "image/png"  # Default fallback
+
+        # Read and encode
+        data = file_path.read_bytes()
+        b64 = base64.b64encode(data).decode("ascii")
+        return f"data:{mime_type};base64,{b64}"
+    except (OSError, PermissionError):
+        return None
 
 
 def json_for_html(data: Any) -> str:
@@ -18,7 +40,20 @@ def json_for_html(data: Any) -> str:
     return json_str
 
 
-def session_to_dict(session: Session) -> dict:
+def process_images(paths: list[str], embed: bool) -> list[dict]:
+    """Process image paths, optionally embedding as data URLs."""
+    images = []
+    for path in paths:
+        img = {"path": path}
+        if embed:
+            data_url = image_to_data_url(path)
+            if data_url:
+                img["data_url"] = data_url
+        images.append(img)
+    return images
+
+
+def session_to_dict(session: Session, embed_images: bool = False) -> dict:
     """Convert Session model to dict for JSON serialization."""
     segments = []
     for seg in session.segments:
@@ -50,6 +85,7 @@ def session_to_dict(session: Session) -> dict:
                     "children_turn_ids": turn.children_turn_ids,
                     "is_branch": turn.is_branch,
                     "is_system": turn.is_system,
+                    "images": process_images(turn.image_paths, embed_images),
                 }
             )
         segments.append(
@@ -98,6 +134,7 @@ def session_to_dict(session: Session) -> dict:
                     "children_turn_ids": turn.children_turn_ids,
                     "is_branch": turn.is_branch,
                     "is_system": turn.is_system,
+                    "images": process_images(turn.image_paths, embed_images),
                 }
             )
         subagents[agent_id] = agent_turns
@@ -123,13 +160,13 @@ def load_assets() -> dict[str, str]:
     return assets
 
 
-def render(session: Session) -> str:
+def render(session: Session, embed_images: bool = False) -> str:
     """Render Session to self-contained HTML string."""
     template_dir = Path(__file__).parent / "templates"
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=False)
     template = env.get_template("base.html.j2")
 
-    data = session_to_dict(session)
+    data = session_to_dict(session, embed_images=embed_images)
     session_json = json_for_html(data)
     assets = load_assets()
 

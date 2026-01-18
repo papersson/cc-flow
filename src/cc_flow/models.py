@@ -40,6 +40,7 @@ class Turn(BaseModel):
     children_turn_ids: list[int] = []
     is_branch: bool = False  # True if sibling turns exist
     is_system: bool = False  # True if this is a system-injected message
+    image_paths: list[str] = []  # Paths to attached images
 
 
 class CompactMetadata(BaseModel):

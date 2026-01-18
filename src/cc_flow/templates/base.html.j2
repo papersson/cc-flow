@@ -682,6 +682,160 @@
             color: var(--text-muted);
         }
 
+        /* Image attachments */
+        .image-attachments {
+            padding: 8px 16px 12px;
+            background: var(--bg-subtle);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .image-link {
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.75rem;
+            color: var(--sky);
+            text-decoration: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            transition: all 0.15s ease;
+            word-break: break-all;
+        }
+
+        .image-link:hover {
+            background: var(--surface-raised);
+            border-color: var(--sky);
+            color: var(--text);
+        }
+
+        .image-link.has-preview {
+            border-color: var(--sage);
+            color: var(--sage);
+        }
+
+        .image-link.has-preview:hover {
+            border-color: var(--sage);
+            background: var(--sage-glow);
+        }
+
+        .image-link svg {
+            width: 14px;
+            height: 14px;
+            flex-shrink: 0;
+            fill: currentColor;
+        }
+
+        /* Image Lightbox */
+        #image-lightbox {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            padding: 40px;
+        }
+
+        #image-lightbox.visible {
+            display: flex;
+        }
+
+        #lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            width: 40px;
+            height: 40px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            transition: all 0.15s ease;
+        }
+
+        #lightbox-close:hover {
+            background: var(--surface-raised);
+            border-color: var(--coral);
+        }
+
+        #lightbox-image {
+            max-width: 90vw;
+            max-height: 80vh;
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+        }
+
+        #lightbox-path {
+            margin-top: 16px;
+            font-family: 'Source Code Pro', monospace;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: var(--surface);
+            padding: 8px 16px;
+            border-radius: 4px;
+            max-width: 90vw;
+            word-break: break-all;
+            text-align: center;
+        }
+
+        #lightbox-error {
+            color: var(--coral);
+            font-size: 1rem;
+            text-align: center;
+            display: none;
+        }
+
+        #lightbox-error.visible {
+            display: block;
+        }
+
+        #lightbox-copy-btn {
+            margin-top: 12px;
+            padding: 8px 16px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: 'Source Sans 3', sans-serif;
+            font-size: 0.85rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+        }
+
+        #lightbox-copy-btn:hover {
+            background: var(--surface-raised);
+            border-color: var(--sky);
+        }
+
+        #lightbox-copy-btn.copied {
+            border-color: var(--sage);
+            color: var(--sage);
+        }
+
+        #lightbox-copy-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+
         .response-items {
             padding: 12px;
             flex: 1;
@@ -951,6 +1105,21 @@
         </div>
     </div>
 
+    <!-- Image Lightbox -->
+    <div id="image-lightbox">
+        <button id="lightbox-close">&times;</button>
+        <img id="lightbox-image" src="" alt="Image preview">
+        <div id="lightbox-error">
+            <p>Image not embedded</p>
+            <p style="font-size: 0.85rem; margin-top: 8px;">Re-run with <code style="background: var(--surface); padding: 2px 6px; border-radius: 3px;">--embed-images</code> to include images in the HTML.</p>
+        </div>
+        <div id="lightbox-path"></div>
+        <button id="lightbox-copy-btn">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy path to clipboard
+        </button>
+    </div>
+
     <script>{{ marked_min_js | safe }}</script>
     <script>{{ highlight_min_js | safe }}</script>
     <script>
@@ -1090,6 +1259,23 @@
 
             const turnKey = `${segmentId}:${turn.id}`;
 
+            // Build image attachments HTML
+            let imagesHtml = '';
+            if (turn.images && turn.images.length > 0) {
+                const imageLinks = turn.images.map((img, i) => {
+                    const hasEmbed = !!img.data_url;
+                    return `<a class="image-link ${hasEmbed ? 'has-preview' : ''}"
+                        href="javascript:void(0)"
+                        data-turn-key="${turnKey}"
+                        data-image-index="${i}"
+                        title="${hasEmbed ? 'Click to view image' : 'Image not embedded'}">
+                        <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        <span>[Image ${i + 1}] ${escapeHtml(img.path)}</span>
+                    </a>`;
+                }).join('');
+                imagesHtml = `<div class="image-attachments">${imageLinks}</div>`;
+            }
+
             card.innerHTML = `
                 <div class="turn-header">
                     <span class="turn-time">${timestamp}</span>
@@ -1099,6 +1285,7 @@
                     <div class="user-label">${messageLabel}</div>
                     ${escapeHtml(turn.user_message)}
                 </div>
+                ${imagesHtml}
                 ${itemsHtml ? `<div class="response-items">${itemsHtml}</div>` : ''}
             `;
             return card;
@@ -1394,7 +1581,22 @@
             const userMessage = document.getElementById('modal-user-message');
 
             userLabel.textContent = turn.is_system ? 'System' : 'Human';
-            userMessage.textContent = turn.user_message;
+
+            // Build user message with images
+            let userContent = escapeHtml(turn.user_message);
+            if (turn.images && turn.images.length > 0) {
+                const imageLinks = turn.images.map((img, i) => {
+                    const hasEmbed = !!img.data_url;
+                    return `<a class="image-link ${hasEmbed ? 'has-preview' : ''}"
+                        onclick="openLightbox(${JSON.stringify(img).replace(/"/g, '&quot;')})"
+                        title="${hasEmbed ? 'Click to view image' : 'Image not embedded'}">
+                        <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                        <span>[Image ${i + 1}] ${escapeHtml(img.path)}</span>
+                    </a>`;
+                }).join('');
+                userContent += `<div class="image-attachments" style="margin-top: 12px; border: none; padding: 0;">${imageLinks}</div>`;
+            }
+            userMessage.innerHTML = userContent;
 
             if (turn.is_system) {
                 userSection.classList.add('system-msg');
@@ -1633,12 +1835,29 @@
             const card = e.target.closest('.turn-card');
             if (!card) return;
             // Skip if clicking interactive elements
-            if (e.target.closest('button, .drill-btn')) return;
+            if (e.target.closest('button, .drill-btn, .image-link')) return;
 
             const turnKey = card.dataset.turnId;
             const turn = turnDataMap[turnKey];
             if (turn) {
                 openModal(turn);
+            }
+        });
+
+        // Image link click handler (for card view)
+        container.addEventListener('click', (e) => {
+            const imageLink = e.target.closest('.image-link');
+            if (!imageLink) return;
+
+            e.stopPropagation();
+            e.preventDefault();
+
+            const turnKey = imageLink.dataset.turnKey;
+            const imageIndex = parseInt(imageLink.dataset.imageIndex, 10);
+            const turn = turnDataMap[turnKey];
+
+            if (turn && turn.images && turn.images[imageIndex]) {
+                openLightbox(turn.images[imageIndex]);
             }
         });
 
@@ -1653,6 +1872,71 @@
             translateY = mouseY - (mouseY - translateY) * (newScale / scale);
             scale = newScale;
             updateTransform();
+        });
+
+        // Image Lightbox functions
+        let currentLightboxPath = '';
+
+        function openLightbox(imgObj) {
+            // imgObj has: { path: string, data_url?: string }
+            const lightbox = document.getElementById('image-lightbox');
+            const img = document.getElementById('lightbox-image');
+            const pathEl = document.getElementById('lightbox-path');
+            const errorEl = document.getElementById('lightbox-error');
+            const copyBtn = document.getElementById('lightbox-copy-btn');
+
+            currentLightboxPath = imgObj.path;
+
+            // Reset state
+            copyBtn.classList.remove('copied');
+            copyBtn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy path to clipboard';
+
+            // Set path display
+            pathEl.textContent = imgObj.path;
+
+            if (imgObj.data_url) {
+                // Embedded image - show directly
+                img.style.display = 'block';
+                errorEl.classList.remove('visible');
+                img.src = imgObj.data_url;
+            } else {
+                // No embedded data - show error message
+                img.style.display = 'none';
+                errorEl.classList.add('visible');
+            }
+
+            lightbox.classList.add('visible');
+        }
+
+        function closeLightbox() {
+            document.getElementById('image-lightbox').classList.remove('visible');
+            document.getElementById('lightbox-image').src = '';
+            currentLightboxPath = '';
+        }
+
+        function copyLightboxPath() {
+            if (!currentLightboxPath) return;
+            const btn = document.getElementById('lightbox-copy-btn');
+            navigator.clipboard.writeText(currentLightboxPath).then(() => {
+                btn.classList.add('copied');
+                btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy path to clipboard';
+                }, 2000);
+            });
+        }
+
+        // Lightbox event listeners
+        document.getElementById('lightbox-close').addEventListener('click', closeLightbox);
+        document.getElementById('lightbox-copy-btn').addEventListener('click', copyLightboxPath);
+        document.getElementById('image-lightbox').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeLightbox();
+        });
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeLightbox();
+            }
         });
 
         render();

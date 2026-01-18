@@ -14,6 +14,9 @@ def main(
     jsonl_path: Path = typer.Argument(..., help="Path to JSONL transcript file"),
     output: Path | None = typer.Option(None, "-o", "--output", help="Output HTML file path"),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open in browser"),
+    embed_images: bool = typer.Option(
+        False, "--embed-images", help="Embed images as base64 (increases file size)"
+    ),
 ) -> None:
     """Visualize a Claude Code session as interactive HTML."""
     from .parser import parse_session
@@ -24,7 +27,7 @@ def main(
         raise typer.Exit(1)
 
     session = parse_session(jsonl_path)
-    html = render(session)
+    html = render(session, embed_images=embed_images)
 
     if output is None:
         output = Path(tempfile.mktemp(suffix=".html", prefix="cc-flow-"))

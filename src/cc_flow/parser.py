@@ -82,14 +82,58 @@ def find_roots(records: list[dict], by_uuid: dict[str, dict]) -> list[str]:
     return roots
 
 
-def is_user_text(rec: dict) -> bool:
-    """Check if record is user message (not tool_result)."""
+def is_image_placeholder(rec: dict) -> bool:
+    """Check if record is an image placeholder (system-created for pasted images).
+
+    Two patterns exist:
+    1. Text-based: text starting with "[Image: source:"
+    2. Image-only: records with only image blocks, no text (real user messages always have text)
+    """
     if rec.get("type") != "user":
         return False
     blocks = get_content_blocks(rec.get("message", {}))
     if not blocks:
         return False
-    return blocks[0].get("type") not in ["tool_result"]
+
+    # Pattern 1: Text-based placeholder
+    first_block = blocks[0]
+    if first_block.get("type") == "text":
+        text = first_block.get("text", "")
+        if text.startswith("[Image: source:"):
+            return True
+
+    # Pattern 2: Image-only record (no meaningful text)
+    has_meaningful_text = False
+    has_images = False
+    for b in blocks:
+        if b.get("type") == "image":
+            has_images = True
+        elif b.get("type") == "text":
+            text = b.get("text", "").strip()
+            if text and not text.startswith("[Image: source:"):
+                has_meaningful_text = True
+
+    if has_images and not has_meaningful_text:
+        return True
+
+    return False
+
+
+def is_user_text(rec: dict) -> bool:
+    """Check if record is user message (not tool_result or image placeholder)."""
+    if rec.get("type") != "user":
+        return False
+    blocks = get_content_blocks(rec.get("message", {}))
+    if not blocks:
+        return False
+    first_block = blocks[0]
+    if first_block.get("type") == "tool_result":
+        return False
+    # Skip image placeholder records - they're separate records created for each
+    # pasted image, but the actual image data is already in the main message
+    if is_image_placeholder(rec):
+        return False
+    return True
 
 
 def is_system_message(text: str) -> bool:
@@ -122,6 +166,51 @@ def is_system_record(rec: dict) -> bool:
     return False
 
 
+def collect_image_paths(
+    uuid: str,
+    by_uuid: dict[str, dict],
+    children_map: dict[str, list[str]],
+    max_depth: int = 10,
+) -> list[str]:
+    """Collect image paths from [Image: source:] child records.
+
+    Traverses children to find text records starting with "[Image: source:"
+    and extracts the file paths. This provides consistent image info regardless
+    of whether images were embedded in the record or stored as separate children.
+    """
+    paths: list[str] = []
+    visited = {uuid}
+    queue = [(child, 1) for child in children_map.get(uuid, [])]
+
+    while queue:
+        kid_uuid, depth = queue.pop(0)
+        if kid_uuid in visited or depth > max_depth:
+            continue
+        visited.add(kid_uuid)
+
+        kid_rec = by_uuid.get(kid_uuid)
+        if not kid_rec or kid_rec.get("type") != "user":
+            continue
+
+        # Check for [Image: source:] text blocks
+        blocks = get_content_blocks(kid_rec.get("message", {}))
+        for b in blocks:
+            if b.get("type") == "text":
+                text = b.get("text", "")
+                if text.startswith("[Image: source:"):
+                    # Extract path: "[Image: source: /path/to/file.png]" -> "/path/to/file.png"
+                    path = text[len("[Image: source:") :].strip().rstrip("]")
+                    if path:
+                        paths.append(path)
+
+        # Continue traversing children
+        for child in children_map.get(kid_uuid, []):
+            if child not in visited:
+                queue.append((child, depth + 1))
+
+    return paths
+
+
 def collect_turns(
     start_uuid: str,
     by_uuid: dict[str, dict],
@@ -139,13 +228,17 @@ def collect_turns(
         current_turn_id = turn_counter[0]
         turn_counter[0] += 1
 
-        # Extract user message
+        # Extract user message text
         user_message = ""
         blocks = get_content_blocks(rec.get("message", {}))
         for block in blocks:
             if block.get("type") == "text":
-                user_message = block.get("text", "")
-                break
+                if not user_message:  # Take first text block as main message
+                    user_message = block.get("text", "")
+                    break
+
+        # Collect image paths from child [Image: source:] records
+        image_paths = collect_image_paths(uuid, by_uuid, children_map)
 
         turn = Turn(
             id=current_turn_id,
@@ -153,6 +246,7 @@ def collect_turns(
             user_timestamp=rec.get("timestamp", ""),
             parent_turn_id=parent_turn_id,
             is_system=is_system_record(rec),
+            image_paths=image_paths,
         )
 
         response_blocks: list[Block] = []
@@ -175,6 +269,15 @@ def collect_turns(
 
             if is_user_text(kid_rec):
                 found_user_texts.append(kid_uuid)
+                continue
+
+            # Skip image placeholder records entirely - they're metadata records
+            # created for pasted images, but the image data is in the main message
+            if is_image_placeholder(kid_rec):
+                # Still need to traverse children
+                for child in children_map.get(kid_uuid, []):
+                    if child not in visited:
+                        queue.append(child)
                 continue
 
             kid_blocks = get_content_blocks(kid_rec.get("message", {}))
