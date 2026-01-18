@@ -694,34 +694,31 @@
         .response-items::-webkit-scrollbar-thumb { background: var(--border-focus); border-radius: 3px; }
 
         .response-item {
-            margin-bottom: 10px;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            border-left: 3px solid transparent;
+            margin-bottom: 6px;
+            padding: 8px 10px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            background: var(--bg);
         }
 
         .response-item:last-child { margin-bottom: 0; }
 
-        .item-thinking {
-            background: var(--bg);
-            border-left-color: var(--text-muted);
-            color: var(--text-secondary);
+        /* Compact items (thinking, tools) - just header */
+        .response-item.compact {
+            padding: 6px 10px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
+        .response-item.compact .item-header {
+            margin-bottom: 0;
+        }
+
+        /* Text items - show content */
         .item-text {
-            background: var(--bg-subtle);
-            border-left-color: var(--sand);
-        }
-
-        .item-tool_use {
-            background: var(--lavender-glow);
-            border-left-color: var(--lavender);
-        }
-
-        .item-tool_result {
-            background: var(--sage-glow);
-            border-left-color: var(--sage);
+            background: transparent;
+            padding: 4px 0;
         }
 
         .item-header {
@@ -729,17 +726,21 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            margin-bottom: 8px;
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             font-weight: 500;
             text-transform: uppercase;
             letter-spacing: 0.08em;
+            color: var(--text-muted);
         }
 
-        .item-thinking .item-header { color: var(--text-muted); }
-        .item-text .item-header { color: var(--sand); }
-        .item-tool_use .item-header { color: var(--lavender); }
-        .item-tool_result .item-header { color: var(--sage); }
+        .item-header::before {
+            content: '▸';
+            font-size: 0.6rem;
+        }
+
+        .item-text .item-header {
+            display: none;
+        }
 
         .item-content {
             white-space: pre-wrap;
@@ -791,29 +792,6 @@
         .item-content.markdown a:hover {
             text-decoration: underline;
         }
-
-        .tool-input {
-            font-family: 'Source Code Pro', monospace;
-            font-size: 0.75rem;
-            color: var(--text-secondary);
-            margin-top: 8px;
-            padding: 10px;
-            background: var(--bg);
-            border-radius: 6px;
-            border: 1px solid var(--border);
-        }
-
-        .collapsible { cursor: pointer; }
-        .collapsible .item-content { display: none; }
-        .collapsible.expanded .item-content { display: block; }
-        .collapsible .item-header::before {
-            content: '>';
-            font-size: 0.8rem;
-            transition: transform 0.15s;
-            display: inline-block;
-            margin-right: 4px;
-        }
-        .collapsible.expanded .item-header::before { transform: rotate(90deg); }
 
         .drill-btn {
             margin-top: 10px;
@@ -1083,43 +1061,29 @@
             const messageLabel = turn.is_system ? 'System' : 'Human';
 
             let itemsHtml = '';
-            let firstTextSeen = false;
             turn.blocks.forEach(item => {
-                const isCollapsible = ['thinking', 'tool_use', 'tool_result'].includes(item.type);
-                // Expand first TEXT block by default, others collapsed
-                const isFirstText = item.type === 'text' && !firstTextSeen;
-                if (item.type === 'text') firstTextSeen = true;
-                const expandedClass = isFirstText ? 'expanded' : '';
-
-                let content = '', drillBtn = '';
+                // Skip tool_result in card preview - shown in modal
+                if (item.type === 'tool_result') return;
 
                 if (item.type === 'thinking') {
-                    content = `<div class="item-content">${escapeHtml(item.content)}</div>`;
+                    // Compact: just header
+                    itemsHtml += `<div class="response-item compact"><div class="item-header">Thinking</div></div>`;
                 } else if (item.type === 'text') {
-                    content = `<div class="item-content markdown">${renderMarkdown(item.content)}</div>`;
+                    // Text: show content
+                    itemsHtml += `
+                        <div class="response-item item-text">
+                            <div class="item-header">Text</div>
+                            <div class="item-content markdown">${renderMarkdown(item.content)}</div>
+                        </div>`;
                 } else if (item.type === 'tool_use') {
-                    if (item.child_agent_id) {
-                        if (subagents[item.child_agent_id]) {
-                            drillBtn = `<button class="drill-btn" onclick="event.stopPropagation();navigateTo('${item.child_agent_id}')">Enter subagent</button>`;
-                        } else {
-                            drillBtn = `<div class="subagent-unavailable">Subagent data unavailable</div>`;
-                        }
+                    // Compact: just tool name
+                    const toolName = item.tool_name + (item.subagent_type ? ` (${item.subagent_type})` : '');
+                    let drillBtn = '';
+                    if (item.child_agent_id && subagents[item.child_agent_id]) {
+                        drillBtn = `<button class="drill-btn" onclick="event.stopPropagation();navigateTo('${item.child_agent_id}')" style="margin-left:auto;padding:4px 8px;font-size:0.65rem;">Enter</button>`;
                     }
-                    content = `<div class="item-content"><div class="tool-input">${escapeHtml(item.tool_input)}</div>${drillBtn}</div>`;
-                } else if (item.type === 'tool_result') {
-                    content = `<div class="item-content">${escapeHtml(item.content)}</div>`;
+                    itemsHtml += `<div class="response-item compact"><div class="item-header">${toolName}</div>${drillBtn}</div>`;
                 }
-
-                const header = item.type === 'tool_use'
-                    ? `${item.tool_name}${item.subagent_type ? ' (' + item.subagent_type + ')' : ''}`
-                    : item.type.replace('_', ' ');
-
-                itemsHtml += `
-                    <div class="response-item item-${item.type} ${isCollapsible ? 'collapsible' : ''} ${expandedClass}"
-                         onclick="event.stopPropagation();this.classList.toggle('expanded')">
-                        <div class="item-header">${header}</div>
-                        ${content}
-                    </div>`;
             });
 
             const turnKey = `${segmentId}:${turn.id}`;
@@ -1133,7 +1097,7 @@
                     <div class="user-label">${messageLabel}</div>
                     ${escapeHtml(turn.user_message)}
                 </div>
-                ${turn.blocks.length > 0 ? `<div class="response-items">${itemsHtml}</div>` : ''}
+                ${itemsHtml ? `<div class="response-items">${itemsHtml}</div>` : ''}
             `;
             return card;
         }
@@ -1667,7 +1631,7 @@
             const card = e.target.closest('.turn-card');
             if (!card) return;
             // Skip if clicking interactive elements
-            if (e.target.closest('button, .drill-btn, .collapsible')) return;
+            if (e.target.closest('button, .drill-btn')) return;
 
             const turnKey = card.dataset.turnId;
             const turn = turnDataMap[turnKey];
