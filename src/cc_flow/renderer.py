@@ -150,7 +150,7 @@ def load_assets() -> dict[str, str]:
     assets_dir = Path(__file__).parent / "assets"
     assets = {}
 
-    for name in ["marked.min.js", "highlight.min.js", "hljs-github-dark.min.css"]:
+    for name in ["marked.min.js", "highlight.min.js", "hljs-github-dark.min.css", "styles.css", "app.js"]:
         asset_path = assets_dir / name
         if asset_path.exists():
             assets[name.replace(".", "_").replace("-", "_")] = asset_path.read_text()
