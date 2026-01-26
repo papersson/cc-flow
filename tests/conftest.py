@@ -39,3 +39,9 @@ def with_subagent_session(fixtures_dir: Path) -> Path:
 def with_images_session(fixtures_dir: Path) -> Path:
     """Return path to with_images.jsonl fixture."""
     return fixtures_dir / "with_images.jsonl"
+
+
+@pytest.fixture
+def with_inline_subagent_session(fixtures_dir: Path) -> Path:
+    """Return path to with_inline_subagent.jsonl fixture."""
+    return fixtures_dir / "with_inline_subagent.jsonl"

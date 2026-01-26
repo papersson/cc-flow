@@ -25,6 +25,28 @@ def load_records(path: Path) -> list[dict]:
     return records
 
 
+def partition_by_subagent(records: list[dict]) -> tuple[list[dict], dict[str, list[dict]]]:
+    """Partition records into main session and subagent groups.
+
+    Args:
+        records: All records from JSONL
+
+    Returns:
+        Tuple of (main_session_records, {subagent_id: records})
+    """
+    main_records = []
+    subagent_groups: dict[str, list[dict]] = defaultdict(list)
+
+    for rec in records:
+        subagent_id = rec.get("subagentId")
+        if subagent_id:
+            subagent_groups[subagent_id].append(rec)
+        else:
+            main_records.append(rec)
+
+    return main_records, dict(subagent_groups)
+
+
 def get_content_blocks(message: dict) -> list[dict]:
     """Extract content blocks from message."""
     content = message.get("content", [])
@@ -502,6 +524,18 @@ def load_subagents(session_dir: Path) -> dict[str, list[Turn]]:
     return subagents
 
 
+def build_subagent_turns(records: list[dict]) -> list[Turn]:
+    """Build turns for a subagent from its records.
+
+    Uses build_segments() and flattens all turns.
+    """
+    segments = build_segments(records)
+    all_turns: list[Turn] = []
+    for seg in segments:
+        all_turns.extend(seg.turns)
+    return all_turns
+
+
 def parse_session(jsonl_path: Path) -> Session:
     """Main entry point: JSONL path -> Session model."""
     records = load_records(jsonl_path)
@@ -509,11 +543,23 @@ def parse_session(jsonl_path: Path) -> Session:
     if not records:
         return Session(segments=[], subagents={})
 
-    segments = build_segments(records)
+    # Partition records: main session vs inline subagents
+    main_records, subagent_groups = partition_by_subagent(records)
 
-    # Load subagents from session directory
+    # Build main session segments (only from non-subagent records)
+    segments = build_segments(main_records)
+
+    # Build inline subagent turns
+    inline_subagents: dict[str, list[Turn]] = {}
+    for subagent_id, subagent_records in subagent_groups.items():
+        inline_subagents[subagent_id] = build_subagent_turns(subagent_records)
+
+    # Load external subagents from session directory
     session_id = jsonl_path.stem
     session_dir = jsonl_path.parent / session_id
-    subagents = load_subagents(session_dir)
+    external_subagents = load_subagents(session_dir)
+
+    # Merge: inline subagents take precedence (more complete data)
+    subagents = {**external_subagents, **inline_subagents}
 
     return Session(segments=segments, subagents=subagents)

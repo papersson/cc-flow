@@ -13,6 +13,7 @@ from cc_flow.parser import (
     is_user_text,
     load_records,
     parse_session,
+    partition_by_subagent,
     truncate,
 )
 
@@ -296,7 +297,10 @@ class TestIsSystemMessage:
             ("[Request interrupted by user]", True),
             ("[Image: source: /path/to/file.png]", True),
             ("Hello, can you help me with this code?", False),
-            ("This session was really helpful", False),  # Starts with "This session" but not the magic prefix
+            (
+                "This session was really helpful",
+                False,
+            ),  # Starts with "This session" but not the magic prefix
             ("Check this image I found", False),
             ("[Something else in brackets]", False),
         ],
@@ -418,7 +422,9 @@ class TestBlockTruncation:
                 "parentUuid": "2",
                 "timestamp": "2026-01-17T10:00:10Z",
                 "message": {
-                    "content": [{"type": "tool_result", "tool_use_id": "tool1", "content": long_result}]
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "tool1", "content": long_result}
+                    ]
                 },
             },
         ]
@@ -429,3 +435,138 @@ class TestBlockTruncation:
         assert block.is_truncated is True
         assert len(block.content) == 303  # 300 + "..."
         assert block.full_content == long_result
+
+
+class TestPartitionBySubagent:
+    """Tests for partition_by_subagent function."""
+
+    def test_all_main_records(self) -> None:
+        """Records without subagentId all go to main."""
+        records = [
+            {"uuid": "1", "type": "user"},
+            {"uuid": "2", "type": "assistant"},
+        ]
+        main, subagents = partition_by_subagent(records)
+        assert len(main) == 2
+        assert subagents == {}
+
+    def test_mixed_records(self) -> None:
+        """Records are partitioned by subagentId."""
+        records = [
+            {"uuid": "1", "type": "user"},
+            {"uuid": "2", "type": "assistant", "subagentId": "agent-a"},
+            {"uuid": "3", "type": "user", "subagentId": "agent-a"},
+            {"uuid": "4", "type": "assistant", "subagentId": "agent-b"},
+        ]
+        main, subagents = partition_by_subagent(records)
+        assert len(main) == 1
+        assert "agent-a" in subagents
+        assert len(subagents["agent-a"]) == 2
+        assert "agent-b" in subagents
+        assert len(subagents["agent-b"]) == 1
+
+    def test_empty_subagent_id_goes_to_main(self) -> None:
+        """Empty string subagentId treated as main session."""
+        records = [
+            {"uuid": "1", "subagentId": ""},
+            {"uuid": "2", "subagentId": None},
+        ]
+        main, subagents = partition_by_subagent(records)
+        assert len(main) == 2
+        assert subagents == {}
+
+
+class TestInlineSubagents:
+    """Tests for inline subagent parsing."""
+
+    def test_inline_subagent_parsed(self, with_inline_subagent_session: Path) -> None:
+        """Inline subagent records are parsed into subagents dict."""
+        session = parse_session(with_inline_subagent_session)
+
+        # Main session should have 1 turn (msg-001 -> msg-002/msg-003/msg-004)
+        assert len(session.segments) == 1
+        assert len(session.segments[0].turns) == 1
+
+        # Subagent should be present with its turns
+        assert "agent-abc" in session.subagents
+        subagent_turns = session.subagents["agent-abc"]
+        assert len(subagent_turns) == 1  # One turn (sub-001 -> sub-002..sub-006)
+
+        # Subagent turn should have tool_use blocks including AskUserQuestion
+        tool_uses = [b for b in subagent_turns[0].blocks if b.type == BlockType.TOOL_USE]
+        assert len(tool_uses) == 2  # AskUserQuestion and Glob
+        tool_names = [b.tool_name for b in tool_uses]
+        assert "AskUserQuestion" in tool_names
+        assert "Glob" in tool_names
+
+    def test_main_session_excludes_subagent_records(self) -> None:
+        """Main session does not contain subagent tool calls."""
+        records = [
+            {
+                "uuid": "1",
+                "type": "user",
+                "timestamp": "2026-01-17T10:00:00Z",
+                "message": {"content": [{"type": "text", "text": "Hi"}]},
+            },
+            {
+                "uuid": "2",
+                "type": "assistant",
+                "parentUuid": "1",
+                "timestamp": "2026-01-17T10:00:05Z",
+                "message": {"content": [{"type": "text", "text": "Hello"}]},
+            },
+            {
+                "uuid": "s1",
+                "type": "user",
+                "subagentId": "agent-x",
+                "timestamp": "2026-01-17T10:00:06Z",
+                "message": {"content": [{"type": "text", "text": "Task"}]},
+            },
+            {
+                "uuid": "s2",
+                "type": "assistant",
+                "subagentId": "agent-x",
+                "parentUuid": "s1",
+                "timestamp": "2026-01-17T10:00:07Z",
+                "message": {
+                    "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}]
+                },
+            },
+        ]
+        # Manually test partition
+        main, subagents = partition_by_subagent(records)
+
+        # Build main segments
+        segments = build_segments(main)
+        assert len(segments) == 1
+
+        # No tool_use blocks in main (the Bash is in subagent)
+        for turn in segments[0].turns:
+            for block in turn.blocks:
+                assert block.tool_name != "Bash"
+
+    def test_inline_overrides_external(self, tmp_path: Path) -> None:
+        """Inline subagent takes precedence over external file."""
+        # Create main JSONL with inline subagent
+        main_jsonl = tmp_path / "session.jsonl"
+        main_jsonl.write_text(
+            '{"uuid": "1", "type": "user", "timestamp": "2026-01-17T10:00:00Z", '
+            '"message": {"content": [{"type": "text", "text": "Hi"}]}}\n'
+            '{"uuid": "s1", "type": "user", "subagentId": "abc", '
+            '"timestamp": "2026-01-17T10:00:01Z", '
+            '"message": {"content": [{"type": "text", "text": "Inline task"}]}}\n'
+        )
+
+        # Create external subagent file with different content
+        session_dir = tmp_path / "session" / "subagents"
+        session_dir.mkdir(parents=True)
+        (session_dir / "agent-abc.jsonl").write_text(
+            '{"uuid": "e1", "type": "user", "timestamp": "2026-01-17T10:00:00Z", '
+            '"message": {"content": [{"type": "text", "text": "External task"}]}}\n'
+        )
+
+        session = parse_session(main_jsonl)
+
+        # Inline should win
+        assert "abc" in session.subagents
+        assert session.subagents["abc"][0].user_message == "Inline task"

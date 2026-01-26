@@ -39,7 +39,9 @@ def assistant_record(draw: st.DrawFn, parent_uuid: str) -> dict:
 def thinking_block(draw: st.DrawFn) -> dict:
     """Generate a thinking block with variable length content."""
     # Generate content that may or may not exceed truncation threshold (500)
-    content = draw(st.text(min_size=1, max_size=700, alphabet=st.characters(blacklist_categories=("Cs",))))
+    content = draw(
+        st.text(min_size=1, max_size=700, alphabet=st.characters(blacklist_categories=("Cs",)))
+    )
     return {"type": "thinking", "thinking": content}
 
 
@@ -47,7 +49,9 @@ def thinking_block(draw: st.DrawFn) -> dict:
 def tool_use_block(draw: st.DrawFn) -> dict:
     """Generate a tool_use block with variable length input."""
     # Generate input that may or may not exceed truncation threshold (200)
-    command = draw(st.text(min_size=1, max_size=350, alphabet=st.characters(blacklist_categories=("Cs",))))
+    command = draw(
+        st.text(min_size=1, max_size=350, alphabet=st.characters(blacklist_categories=("Cs",)))
+    )
     tool_id = draw(st.text(alphabet="abcdef0123456789", min_size=8, max_size=8))
     return {
         "type": "tool_use",
@@ -69,7 +73,9 @@ def assistant_with_blocks(draw: st.DrawFn, parent_uuid: str) -> dict:
         blocks.append(draw(tool_use_block()))
     # Always include at least one text block if no other blocks
     if not blocks or draw(st.booleans()):
-        text = draw(st.text(min_size=1, max_size=100, alphabet=st.characters(blacklist_categories=("Cs",))))
+        text = draw(
+            st.text(min_size=1, max_size=100, alphabet=st.characters(blacklist_categories=("Cs",)))
+        )
         blocks.append({"type": "text", "text": text})
 
     return {
@@ -85,13 +91,17 @@ def assistant_with_blocks(draw: st.DrawFn, parent_uuid: str) -> dict:
 def tool_result_record(draw: st.DrawFn, parent_uuid: str, tool_use_id: str) -> dict:
     """Generate a tool_result record with variable length content."""
     # Generate content that may or may not exceed truncation threshold (300)
-    content = draw(st.text(min_size=1, max_size=450, alphabet=st.characters(blacklist_categories=("Cs",))))
+    content = draw(
+        st.text(min_size=1, max_size=450, alphabet=st.characters(blacklist_categories=("Cs",)))
+    )
     return {
         "uuid": draw(st.text(alphabet="abcdef0123456789", min_size=8, max_size=8)),
         "type": "user",
         "parentUuid": parent_uuid,
         "timestamp": "2026-01-17T10:00:10Z",
-        "message": {"content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": content}]},
+        "message": {
+            "content": [{"type": "tool_result", "tool_use_id": tool_use_id, "content": content}]
+        },
     }
 
 
