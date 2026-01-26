@@ -507,15 +507,22 @@ def collect_subagent_blocks(records: list[dict]) -> list[Turn]:
     """Collect all blocks from subagent records without tree validation.
 
     Subagent files may have orphaned parent references (pointing to main session).
-    This function extracts blocks from ALL assistant records regardless of tree structure,
+    This function extracts blocks from ALL records regardless of tree structure,
     since subagent files are already isolated contexts.
+
+    Processes:
+    - Assistant records: thinking, text, tool_use blocks
+    - User records: tool_result blocks only
     """
     # Sort records by timestamp
     sorted_records = sorted(records, key=lambda r: r.get("timestamp", ""))
 
     blocks: list[Block] = []
     for rec in sorted_records:
-        if rec.get("type") != "assistant":
+        rec_type = rec.get("type")
+        # Process assistant records for thinking/text/tool_use
+        # Process user records for tool_result only
+        if rec_type not in ("assistant", "user"):
             continue
 
         timestamp = rec.get("timestamp", "")[11:19] if rec.get("timestamp") else ""
@@ -523,6 +530,10 @@ def collect_subagent_blocks(records: list[dict]) -> list[Turn]:
 
         for block in rec_blocks:
             block_type = block.get("type")
+
+            # For user records, only process tool_result blocks
+            if rec_type == "user" and block_type != "tool_result":
+                continue
 
             if block_type == "thinking":
                 full_thinking = block.get("thinking", "")
