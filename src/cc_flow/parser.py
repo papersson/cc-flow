@@ -503,6 +503,114 @@ def build_segments(records: list[dict]) -> list[Segment]:
     return segments
 
 
+def collect_subagent_blocks(records: list[dict]) -> list[Turn]:
+    """Collect all blocks from subagent records without tree validation.
+
+    Subagent files may have orphaned parent references (pointing to main session).
+    This function extracts blocks from ALL assistant records regardless of tree structure,
+    since subagent files are already isolated contexts.
+    """
+    # Sort records by timestamp
+    sorted_records = sorted(records, key=lambda r: r.get("timestamp", ""))
+
+    blocks: list[Block] = []
+    for rec in sorted_records:
+        if rec.get("type") != "assistant":
+            continue
+
+        timestamp = rec.get("timestamp", "")[11:19] if rec.get("timestamp") else ""
+        rec_blocks = get_content_blocks(rec.get("message", {}))
+
+        for block in rec_blocks:
+            block_type = block.get("type")
+
+            if block_type == "thinking":
+                full_thinking = block.get("thinking", "")
+                truncated_thinking = truncate(full_thinking, 500)
+                is_truncated = len(full_thinking) > 500
+                blocks.append(
+                    Block(
+                        type=BlockType.THINKING,
+                        content=truncated_thinking,
+                        timestamp=timestamp,
+                        full_content=full_thinking if is_truncated else None,
+                        is_truncated=is_truncated,
+                    )
+                )
+            elif block_type == "text":
+                blocks.append(
+                    Block(
+                        type=BlockType.TEXT,
+                        content=block.get("text", ""),
+                        timestamp=timestamp,
+                    )
+                )
+            elif block_type == "tool_use":
+                inputs = block.get("input", {})
+                full_tool_input = ""
+                for key in ["command", "prompt", "pattern", "file_path", "query"]:
+                    if key in inputs:
+                        full_tool_input = str(inputs[key])
+                        break
+                else:
+                    full_tool_input = str(inputs)
+
+                truncated_tool_input = truncate(full_tool_input, 200)
+                is_truncated = len(full_tool_input) > 200
+
+                blocks.append(
+                    Block(
+                        type=BlockType.TOOL_USE,
+                        content="",
+                        timestamp=timestamp,
+                        tool_name=block.get("name", "?"),
+                        tool_input=truncated_tool_input,
+                        tool_use_id=block.get("id", ""),
+                        subagent_type=inputs.get("subagent_type"),
+                        full_content=full_tool_input if is_truncated else None,
+                        is_truncated=is_truncated,
+                    )
+                )
+            elif block_type == "tool_result":
+                content = block.get("content", "")
+                agent_id = extract_agent_id_from_result(content)
+                if isinstance(content, list):
+                    texts = [c.get("text", "") for c in content if isinstance(c, dict)]
+                    content = "\n".join(texts)
+                full_result = str(content)
+                truncated_result = truncate(full_result, 300)
+                is_truncated = len(full_result) > 300
+                blocks.append(
+                    Block(
+                        type=BlockType.TOOL_RESULT,
+                        content=truncated_result,
+                        timestamp=timestamp,
+                        tool_use_id=block.get("tool_use_id", ""),
+                        child_agent_id=agent_id,
+                        full_content=full_result if is_truncated else None,
+                        is_truncated=is_truncated,
+                    )
+                )
+
+    if not blocks:
+        return []
+
+    # Get first timestamp for the turn
+    first_timestamp = ""
+    if sorted_records:
+        first_timestamp = sorted_records[0].get("timestamp", "")
+
+    # Return as single synthetic turn containing all blocks
+    return [
+        Turn(
+            id=0,
+            user_message="[Subagent execution]",
+            user_timestamp=first_timestamp,
+            blocks=blocks,
+        )
+    ]
+
+
 def load_subagents(session_dir: Path) -> dict[str, list[Turn]]:
     """Load all subagent JSONL files from subagents/ directory."""
     subagents: dict[str, list[Turn]] = {}
@@ -514,12 +622,9 @@ def load_subagents(session_dir: Path) -> dict[str, list[Turn]]:
     for f in subagent_dir.glob("*.jsonl"):
         agent_id = f.stem.replace("agent-", "")
         records = load_records(f)
-        segments = build_segments(records)
-        # Flatten turns from all segments
-        all_turns = []
-        for seg in segments:
-            all_turns.extend(seg.turns)
-        subagents[agent_id] = all_turns
+        turns = collect_subagent_blocks(records)
+        if turns:
+            subagents[agent_id] = turns
 
     return subagents
 
@@ -527,13 +632,9 @@ def load_subagents(session_dir: Path) -> dict[str, list[Turn]]:
 def build_subagent_turns(records: list[dict]) -> list[Turn]:
     """Build turns for a subagent from its records.
 
-    Uses build_segments() and flattens all turns.
+    Uses flat collection to handle orphaned parent references.
     """
-    segments = build_segments(records)
-    all_turns: list[Turn] = []
-    for seg in segments:
-        all_turns.extend(seg.turns)
-    return all_turns
+    return collect_subagent_blocks(records)
 
 
 def parse_session(jsonl_path: Path) -> Session:

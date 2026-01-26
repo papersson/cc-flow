@@ -552,21 +552,70 @@ class TestInlineSubagents:
         main_jsonl.write_text(
             '{"uuid": "1", "type": "user", "timestamp": "2026-01-17T10:00:00Z", '
             '"message": {"content": [{"type": "text", "text": "Hi"}]}}\n'
-            '{"uuid": "s1", "type": "user", "subagentId": "abc", '
+            '{"uuid": "s1", "type": "assistant", "subagentId": "abc", '
             '"timestamp": "2026-01-17T10:00:01Z", '
-            '"message": {"content": [{"type": "text", "text": "Inline task"}]}}\n'
+            '"message": {"content": [{"type": "tool_use", "id": "t1", "name": "InlineTool", "input": {}}]}}\n'
         )
 
         # Create external subagent file with different content
         session_dir = tmp_path / "session" / "subagents"
         session_dir.mkdir(parents=True)
         (session_dir / "agent-abc.jsonl").write_text(
-            '{"uuid": "e1", "type": "user", "timestamp": "2026-01-17T10:00:00Z", '
-            '"message": {"content": [{"type": "text", "text": "External task"}]}}\n'
+            '{"uuid": "e1", "type": "assistant", "timestamp": "2026-01-17T10:00:00Z", '
+            '"message": {"content": [{"type": "tool_use", "id": "t2", "name": "ExternalTool", "input": {}}]}}\n'
         )
 
         session = parse_session(main_jsonl)
 
-        # External file should win
+        # External file should win - check tool name
         assert "abc" in session.subagents
-        assert session.subagents["abc"][0].user_message == "External task"
+        assert len(session.subagents["abc"]) == 1
+        tool_blocks = [
+            b for b in session.subagents["abc"][0].blocks if b.type == BlockType.TOOL_USE
+        ]
+        assert len(tool_blocks) == 1
+        assert tool_blocks[0].tool_name == "ExternalTool"
+
+    def test_orphaned_parent_refs_collected(self, tmp_path: Path) -> None:
+        """Subagent records with orphaned parent refs are still collected."""
+        # Create main JSONL
+        main_jsonl = tmp_path / "session.jsonl"
+        main_jsonl.write_text(
+            '{"uuid": "1", "type": "user", "timestamp": "2026-01-17T10:00:00Z", '
+            '"message": {"content": [{"type": "text", "text": "Hi"}]}}\n'
+        )
+
+        # Create external subagent file with orphaned parent references
+        # (parentUuids point to records that don't exist in this file)
+        session_dir = tmp_path / "session" / "subagents"
+        session_dir.mkdir(parents=True)
+        (session_dir / "agent-orphan.jsonl").write_text(
+            # First segment - has valid user root
+            '{"uuid": "s1", "type": "user", "timestamp": "2026-01-17T10:00:01Z", '
+            '"message": {"content": [{"type": "text", "text": "Start"}]}}\n'
+            '{"uuid": "s2", "type": "assistant", "parentUuid": "s1", '
+            '"timestamp": "2026-01-17T10:00:02Z", '
+            '"message": {"content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}]}}\n'
+            # Second segment - orphaned (parentUuid not in file)
+            '{"uuid": "s3", "type": "assistant", "parentUuid": "missing-uuid-1", '
+            '"timestamp": "2026-01-17T10:00:03Z", '
+            '"message": {"content": [{"type": "tool_use", "id": "t2", "name": "Read", "input": {"file_path": "/tmp/a"}}]}}\n'
+            '{"uuid": "s4", "type": "assistant", "parentUuid": "s3", '
+            '"timestamp": "2026-01-17T10:00:04Z", '
+            '"message": {"content": [{"type": "tool_use", "id": "t3", "name": "Glob", "input": {"pattern": "*.py"}}]}}\n'
+            # Third segment - also orphaned
+            '{"uuid": "s5", "type": "assistant", "parentUuid": "missing-uuid-2", '
+            '"timestamp": "2026-01-17T10:00:05Z", '
+            '"message": {"content": [{"type": "tool_use", "id": "t4", "name": "Grep", "input": {"pattern": "foo"}}]}}\n'
+        )
+
+        session = parse_session(main_jsonl)
+
+        # All 4 tool calls should be captured (not just the first segment)
+        assert "orphan" in session.subagents
+        turns = session.subagents["orphan"]
+        assert len(turns) == 1
+        tool_blocks = [b for b in turns[0].blocks if b.type == BlockType.TOOL_USE]
+        assert len(tool_blocks) == 4
+        tool_names = [b.tool_name for b in tool_blocks]
+        assert tool_names == ["Bash", "Read", "Glob", "Grep"]
