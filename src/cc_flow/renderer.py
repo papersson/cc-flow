@@ -145,12 +145,48 @@ def session_to_dict(session: Session, embed_images: bool = False) -> dict:
     }
 
 
+def compute_metadata(session: Session, jsonl_path: Path) -> dict:
+    """Compute summary metadata for the session."""
+    total_turns = sum(len(seg.turns) for seg in session.segments)
+    compactions = sum(1 for seg in session.segments if seg.compact_metadata)
+
+    # Get earliest timestamp from first segment's first turn
+    started = None
+    if session.segments and session.segments[0].turns:
+        started = session.segments[0].turns[0].user_timestamp
+
+    return {
+        "session_id": jsonl_path.stem,
+        "started": started,
+        "total_turns": total_turns,
+        "total_subagents": len(session.subagents),
+        "compactions": compactions,
+    }
+
+
+def render_json(session: Session, jsonl_path: Path, compact: bool = False) -> str:
+    """Render session as JSON string."""
+    data = session_to_dict(session)
+    metadata = compute_metadata(session, jsonl_path)
+
+    # Put metadata first in output
+    ordered = {"metadata": metadata, **data}
+
+    return json.dumps(ordered, indent=None if compact else 2)
+
+
 def load_assets() -> dict[str, str]:
     """Load bundled JS/CSS assets for inline embedding."""
     assets_dir = Path(__file__).parent / "assets"
     assets = {}
 
-    for name in ["marked.min.js", "highlight.min.js", "hljs-github-dark.min.css", "styles.css", "app.js"]:
+    for name in [
+        "marked.min.js",
+        "highlight.min.js",
+        "hljs-github-dark.min.css",
+        "styles.css",
+        "app.js",
+    ]:
         asset_path = assets_dir / name
         if asset_path.exists():
             assets[name.replace(".", "_").replace("-", "_")] = asset_path.read_text()

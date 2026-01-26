@@ -1,9 +1,18 @@
 """Tests for the renderer module."""
 
+import json
 from pathlib import Path
 
 from cc_flow.parser import parse_session
-from cc_flow.renderer import image_to_data_url, json_for_html, process_images, render, session_to_dict
+from cc_flow.renderer import (
+    compute_metadata,
+    image_to_data_url,
+    json_for_html,
+    process_images,
+    render,
+    render_json,
+    session_to_dict,
+)
 
 
 class TestJsonForHtml:
@@ -100,17 +109,77 @@ class TestImageToDataUrl:
     def test_valid_png(self, tmp_path: Path) -> None:
         """Valid PNG file returns data URL with correct MIME type."""
         # Minimal valid PNG (1x1 transparent pixel)
-        png_data = bytes([
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,  # PNG signature
-            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,  # IHDR chunk
-            0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
-            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
-            0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
-            0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
-            0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
-            0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
-            0x42, 0x60, 0x82,
-        ])
+        png_data = bytes(
+            [
+                0x89,
+                0x50,
+                0x4E,
+                0x47,
+                0x0D,
+                0x0A,
+                0x1A,
+                0x0A,  # PNG signature
+                0x00,
+                0x00,
+                0x00,
+                0x0D,
+                0x49,
+                0x48,
+                0x44,
+                0x52,  # IHDR chunk
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0x00,
+                0x00,
+                0x00,
+                0x01,
+                0x08,
+                0x06,
+                0x00,
+                0x00,
+                0x00,
+                0x1F,
+                0x15,
+                0xC4,
+                0x89,
+                0x00,
+                0x00,
+                0x00,
+                0x0A,
+                0x49,
+                0x44,
+                0x41,
+                0x54,
+                0x78,
+                0x9C,
+                0x63,
+                0x00,
+                0x01,
+                0x00,
+                0x00,
+                0x05,
+                0x00,
+                0x01,
+                0x0D,
+                0x0A,
+                0x2D,
+                0xB4,
+                0x00,
+                0x00,
+                0x00,
+                0x00,
+                0x49,
+                0x45,
+                0x4E,
+                0x44,
+                0xAE,
+                0x42,
+                0x60,
+                0x82,
+            ]
+        )
         img = tmp_path / "test.png"
         img.write_bytes(png_data)
 
@@ -196,3 +265,77 @@ class TestProcessImages:
         """Empty paths list returns empty result."""
         result = process_images([], embed=True)
         assert result == []
+
+
+class TestComputeMetadata:
+    """Tests for compute_metadata function."""
+
+    def test_simple_session(self, simple_session: Path) -> None:
+        """Metadata is computed correctly for simple session."""
+        session = parse_session(simple_session)
+        metadata = compute_metadata(session, simple_session)
+
+        assert metadata["session_id"] == "simple"
+        assert metadata["total_turns"] == 2
+        assert metadata["total_subagents"] == 0
+        assert metadata["compactions"] == 0
+        assert metadata["started"] == "2026-01-17T10:00:00Z"
+
+    def test_session_with_compaction(self, with_compaction_session: Path) -> None:
+        """Compaction count is correct."""
+        session = parse_session(with_compaction_session)
+        metadata = compute_metadata(session, with_compaction_session)
+
+        assert metadata["compactions"] == 1
+        assert metadata["total_turns"] == 2
+
+    def test_empty_session(self, tmp_path: Path) -> None:
+        """Empty session has null started timestamp."""
+        from cc_flow.models import Session
+
+        session = Session(segments=[], subagents={})
+        fake_path = tmp_path / "empty.jsonl"
+        metadata = compute_metadata(session, fake_path)
+
+        assert metadata["session_id"] == "empty"
+        assert metadata["started"] is None
+        assert metadata["total_turns"] == 0
+
+
+class TestRenderJson:
+    """Tests for render_json function."""
+
+    def test_output_is_valid_json(self, simple_session: Path) -> None:
+        """Output parses as valid JSON."""
+        session = parse_session(simple_session)
+        result = render_json(session, simple_session)
+
+        data = json.loads(result)
+        assert "metadata" in data
+        assert "segments" in data
+        assert "subagents" in data
+
+    def test_metadata_first_in_output(self, simple_session: Path) -> None:
+        """Metadata key appears first in output."""
+        session = parse_session(simple_session)
+        result = render_json(session, simple_session)
+
+        # First key should be "metadata"
+        assert result.strip().startswith('{\n  "metadata"')
+
+    def test_compact_mode(self, simple_session: Path) -> None:
+        """Compact mode produces single-line output."""
+        session = parse_session(simple_session)
+        result = render_json(session, simple_session, compact=True)
+
+        # Compact JSON has no newlines (except within string values)
+        lines = result.strip().split("\n")
+        assert len(lines) == 1
+
+    def test_pretty_mode_has_indentation(self, simple_session: Path) -> None:
+        """Pretty mode produces indented output."""
+        session = parse_session(simple_session)
+        result = render_json(session, simple_session, compact=False)
+
+        # Pretty JSON has multiple lines with indentation
+        assert "\n  " in result
