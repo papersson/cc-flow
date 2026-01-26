@@ -545,8 +545,8 @@ class TestInlineSubagents:
             for block in turn.blocks:
                 assert block.tool_name != "Bash"
 
-    def test_inline_overrides_external(self, tmp_path: Path) -> None:
-        """Inline subagent takes precedence over external file."""
+    def test_external_overrides_inline(self, tmp_path: Path) -> None:
+        """External subagent file takes precedence over inline records."""
         # Create main JSONL with inline subagent
         main_jsonl = tmp_path / "session.jsonl"
         main_jsonl.write_text(
@@ -567,6 +567,6 @@ class TestInlineSubagents:
 
         session = parse_session(main_jsonl)
 
-        # Inline should win
+        # External file should win
         assert "abc" in session.subagents
-        assert session.subagents["abc"][0].user_message == "Inline task"
+        assert session.subagents["abc"][0].user_message == "External task"

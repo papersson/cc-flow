@@ -559,7 +559,7 @@ def parse_session(jsonl_path: Path) -> Session:
     session_dir = jsonl_path.parent / session_id
     external_subagents = load_subagents(session_dir)
 
-    # Merge: inline subagents take precedence (more complete data)
-    subagents = {**external_subagents, **inline_subagents}
+    # Merge: external file subagents take precedence
+    subagents = {**inline_subagents, **external_subagents}
 
     return Session(segments=segments, subagents=subagents)
