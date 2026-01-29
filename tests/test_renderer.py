@@ -6,6 +6,7 @@ from pathlib import Path
 from cc_flow.parser import parse_session
 from cc_flow.renderer import (
     compute_metadata,
+    dict_to_session,
     image_to_data_url,
     json_for_html,
     process_images,
@@ -339,3 +340,126 @@ class TestRenderJson:
 
         # Pretty JSON has multiple lines with indentation
         assert "\n  " in result
+
+
+class TestDictToSession:
+    """Tests for dict_to_session function."""
+
+    def test_round_trip_simple(self, simple_session: Path) -> None:
+        """JSONL -> Session -> dict -> Session produces equivalent result."""
+        original = parse_session(simple_session)
+        data = session_to_dict(original)
+        restored = dict_to_session(data)
+
+        assert len(restored.segments) == len(original.segments)
+        assert len(restored.subagents) == len(original.subagents)
+
+        for orig_seg, rest_seg in zip(original.segments, restored.segments, strict=True):
+            assert rest_seg.id == orig_seg.id
+            assert rest_seg.type == orig_seg.type
+            assert len(rest_seg.turns) == len(orig_seg.turns)
+
+    def test_round_trip_with_compaction(self, with_compaction_session: Path) -> None:
+        """Compaction metadata survives round-trip."""
+        original = parse_session(with_compaction_session)
+        data = session_to_dict(original)
+        restored = dict_to_session(data)
+
+        assert restored.segments[1].compact_metadata is not None
+        assert restored.segments[1].compact_metadata.pre_tokens == 162000
+        assert restored.segments[1].compact_metadata.trigger == "auto"
+
+    def test_round_trip_with_subagents(self, with_inline_subagent_session: Path) -> None:
+        """Subagents survive round-trip."""
+        original = parse_session(with_inline_subagent_session)
+        data = session_to_dict(original)
+        restored = dict_to_session(data)
+
+        assert len(restored.subagents) == len(original.subagents)
+        for agent_id in original.subagents:
+            assert agent_id in restored.subagents
+            assert len(restored.subagents[agent_id]) == len(original.subagents[agent_id])
+
+    def test_block_type_conversion(self) -> None:
+        """BlockType strings are converted to enums."""
+        from cc_flow.models import BlockType
+
+        data = {
+            "segments": [
+                {
+                    "id": 0,
+                    "type": "original",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "turns": [
+                        {
+                            "id": 0,
+                            "user_message": "test",
+                            "user_timestamp": "2026-01-01T00:00:00Z",
+                            "blocks": [
+                                {"type": "thinking", "content": "hmm"},
+                                {"type": "text", "content": "hello"},
+                                {"type": "tool_use", "content": "", "tool_name": "Bash"},
+                                {"type": "tool_result", "content": "output"},
+                            ],
+                            "images": [],
+                        }
+                    ],
+                    "compact_metadata": None,
+                }
+            ],
+            "subagents": {},
+        }
+
+        session = dict_to_session(data)
+        blocks = session.segments[0].turns[0].blocks
+
+        assert blocks[0].type == BlockType.THINKING
+        assert blocks[1].type == BlockType.TEXT
+        assert blocks[2].type == BlockType.TOOL_USE
+        assert blocks[3].type == BlockType.TOOL_RESULT
+
+    def test_images_conversion(self) -> None:
+        """Images array is converted to image_paths list."""
+        data = {
+            "segments": [
+                {
+                    "id": 0,
+                    "type": "original",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "turns": [
+                        {
+                            "id": 0,
+                            "user_message": "test",
+                            "user_timestamp": "2026-01-01T00:00:00Z",
+                            "blocks": [],
+                            "images": [{"path": "/tmp/a.png"}, {"path": "/tmp/b.png"}],
+                        }
+                    ],
+                    "compact_metadata": None,
+                }
+            ],
+            "subagents": {},
+        }
+
+        session = dict_to_session(data)
+        turn = session.segments[0].turns[0]
+
+        assert turn.image_paths == ["/tmp/a.png", "/tmp/b.png"]
+
+    def test_ignores_metadata_key(self) -> None:
+        """Metadata key in input is ignored (it's computed, not stored)."""
+        data = {
+            "metadata": {"session_id": "test", "total_turns": 999},
+            "segments": [],
+            "subagents": {},
+        }
+
+        session = dict_to_session(data)
+        assert session.segments == []
+        assert session.subagents == {}
+
+    def test_empty_input(self) -> None:
+        """Empty dict produces empty session."""
+        session = dict_to_session({})
+        assert session.segments == []
+        assert session.subagents == {}

@@ -8,7 +8,7 @@ from typing import Any
 
 from jinja2 import Environment, FileSystemLoader
 
-from .models import Session
+from .models import Block, BlockType, CompactMetadata, Segment, Session, Turn
 
 
 def image_to_data_url(path: str) -> str | None:
@@ -143,6 +143,108 @@ def session_to_dict(session: Session, embed_images: bool = False) -> dict:
         "segments": segments,
         "subagents": subagents,
     }
+
+
+def dict_to_session(data: dict) -> Session:
+    """Convert JSON dict back to Session model.
+
+    Inverse of session_to_dict(). Used when loading JSON transcript output.
+    The 'metadata' key is ignored as it's computed, not stored.
+    """
+    segments = []
+    for seg_data in data.get("segments", []):
+        turns = []
+        for turn_data in seg_data.get("turns", []):
+            blocks = []
+            for block_data in turn_data.get("blocks", []):
+                blocks.append(
+                    Block(
+                        type=BlockType(block_data["type"]),
+                        content=block_data.get("content", ""),
+                        timestamp=block_data.get("timestamp"),
+                        tool_name=block_data.get("tool_name"),
+                        tool_input=block_data.get("tool_input"),
+                        tool_use_id=block_data.get("tool_use_id"),
+                        child_agent_id=block_data.get("child_agent_id"),
+                        subagent_type=block_data.get("subagent_type"),
+                        full_content=block_data.get("full_content"),
+                        is_truncated=block_data.get("is_truncated", False),
+                    )
+                )
+
+            image_paths = [img["path"] for img in turn_data.get("images", [])]
+
+            turns.append(
+                Turn(
+                    id=turn_data["id"],
+                    user_message=turn_data.get("user_message", ""),
+                    user_timestamp=turn_data.get("user_timestamp", ""),
+                    blocks=blocks,
+                    parent_turn_id=turn_data.get("parent_turn_id"),
+                    children_turn_ids=turn_data.get("children_turn_ids", []),
+                    is_branch=turn_data.get("is_branch", False),
+                    is_system=turn_data.get("is_system", False),
+                    image_paths=image_paths,
+                )
+            )
+
+        compact_metadata = None
+        if seg_data.get("compact_metadata"):
+            compact_metadata = CompactMetadata(
+                trigger=seg_data["compact_metadata"]["trigger"],
+                pre_tokens=seg_data["compact_metadata"]["pre_tokens"],
+            )
+
+        segments.append(
+            Segment(
+                id=seg_data["id"],
+                type=seg_data.get("type", "original"),
+                timestamp=seg_data.get("timestamp", ""),
+                turns=turns,
+                compact_metadata=compact_metadata,
+            )
+        )
+
+    # Convert subagents
+    subagents: dict[str, list[Turn]] = {}
+    for agent_id, turns_data in data.get("subagents", {}).items():
+        agent_turns = []
+        for turn_data in turns_data:
+            blocks = []
+            for block_data in turn_data.get("blocks", []):
+                blocks.append(
+                    Block(
+                        type=BlockType(block_data["type"]),
+                        content=block_data.get("content", ""),
+                        timestamp=block_data.get("timestamp"),
+                        tool_name=block_data.get("tool_name"),
+                        tool_input=block_data.get("tool_input"),
+                        tool_use_id=block_data.get("tool_use_id"),
+                        child_agent_id=block_data.get("child_agent_id"),
+                        subagent_type=block_data.get("subagent_type"),
+                        full_content=block_data.get("full_content"),
+                        is_truncated=block_data.get("is_truncated", False),
+                    )
+                )
+
+            image_paths = [img["path"] for img in turn_data.get("images", [])]
+
+            agent_turns.append(
+                Turn(
+                    id=turn_data["id"],
+                    user_message=turn_data.get("user_message", ""),
+                    user_timestamp=turn_data.get("user_timestamp", ""),
+                    blocks=blocks,
+                    parent_turn_id=turn_data.get("parent_turn_id"),
+                    children_turn_ids=turn_data.get("children_turn_ids", []),
+                    is_branch=turn_data.get("is_branch", False),
+                    is_system=turn_data.get("is_system", False),
+                    image_paths=image_paths,
+                )
+            )
+        subagents[agent_id] = agent_turns
+
+    return Session(segments=segments, subagents=subagents)
 
 
 def compute_metadata(session: Session, jsonl_path: Path) -> dict:

@@ -29,6 +29,11 @@ Session files are stored at:
   ~/.claude/projects/<project-hash>/sessions/<session-id>.jsonl
 
 \b
+Also accepts JSON output from the transcript command:
+  cc-flow transcript session.jsonl -o session.json
+  cc-flow html session.json
+
+\b
 Examples:
   # Open most recent session
   cc-flow html $(ls -t ~/.claude/projects/*/sessions/*.jsonl | head -1)
@@ -42,21 +47,28 @@ app = typer.Typer(add_completion=False, help=APP_HELP)
 
 @app.command(help=HTML_HELP)
 def html(
-    jsonl_path: Path = typer.Argument(..., help="Path to JSONL transcript file"),
+    input_path: Path = typer.Argument(..., help="Path to JSONL transcript or JSON file"),
     output: Path | None = typer.Option(None, "-o", "--output", help="Output HTML file path"),
     no_open: bool = typer.Option(False, "--no-open", help="Don't auto-open in browser"),
     embed_images: bool = typer.Option(
         False, "--embed-images", help="Embed images as base64 (increases file size)"
     ),
 ) -> None:
-    from .parser import parse_session
-    from .renderer import render
+    import json
 
-    if not jsonl_path.exists():
-        typer.echo(f"Error: File not found: {jsonl_path}", err=True)
+    from .parser import parse_session
+    from .renderer import dict_to_session, render
+
+    if not input_path.exists():
+        typer.echo(f"Error: File not found: {input_path}", err=True)
         raise typer.Exit(1)
 
-    session = parse_session(jsonl_path)
+    if input_path.suffix == ".json":
+        data = json.loads(input_path.read_text())
+        session = dict_to_session(data)
+    else:
+        session = parse_session(input_path)
+
     html_content = render(session, embed_images=embed_images)
 
     if output is None:
